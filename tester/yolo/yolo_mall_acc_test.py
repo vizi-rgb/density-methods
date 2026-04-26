@@ -1,26 +1,20 @@
-from pathlib import Path
 import os
 
 import numpy as np
 from models.yolo.yolo import YOLOModel
+from project_root import PROJECT_ROOT
 import scipy.io
 
 
 class YOLOMallAccTest:
     def __init__(self):
         self.dataset_path = (
-            Path(__file__).resolve().parent.parent.parent
-            / "datasets"
-            / "mall_dataset"
-            / "frames"
+            PROJECT_ROOT / "data" / "datasets" / "mall_dataset" / "frames"
         )
         self.gt_path = (
-            Path(__file__).resolve().parent.parent.parent
-            / "datasets"
-            / "mall_dataset"
-            / "mall_gt.mat"
+            PROJECT_ROOT / "data" / "datasets" / "mall_dataset" / "mall_gt.mat"
         )
-        self.model = YOLOModel(dataset_path=self.dataset_path)
+        self.model = YOLOModel(dataset_path=str(self.dataset_path))
 
     def run_test(self):
         raw_results = self.model.run_prediction(show=False)

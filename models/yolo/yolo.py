@@ -3,7 +3,7 @@ import logging
 from ultralytics import YOLO
 from ultralytics.engine.results import Results
 
-from config.config_loader import ConfigLoader, ModelConfig
+from config.config_loader import ModelConfig
 from models.base_model import BaseModel
 from ultralytics.utils import set_logging
 
@@ -23,8 +23,8 @@ class YOLOModel(BaseModel):
 
     def _get_model(self):
         if self.model is None:
-            logger.info("Loading YOLO model: %s", self.config["model"])
-            self.model = YOLO(self.config["model"])
+            logger.info("Loading YOLO model: %s", self.config["weights"])
+            self.model = YOLO(self.config["weights"])
         return self.model
 
     def run_prediction(self, show: bool = None) -> list[Results]:

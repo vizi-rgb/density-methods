@@ -1,3 +1,6 @@
 .idea
 .DS_Store
-datasets
+data/datasets
+data/weights
+!data/datasets/.gitkeep
+!data/weights/.gitkeep

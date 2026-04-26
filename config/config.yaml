@@ -1,12 +1,11 @@
 yolo:
-  model: yolo26n.pt
+  weights: data/weights/yolo26n.pt
   classes: [0]
   show: true
   logging: true
 
 yolo-crowd:
-  weights: yolo-crowd.pt
-  source: datasets/mall_dataset/frames/seq_000001.jpg
+  weights: data/weights/yolo-crowd.pt
   img_size: 640
   classes: [0]
   show: false

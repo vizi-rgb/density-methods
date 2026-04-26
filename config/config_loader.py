@@ -2,6 +2,8 @@ from enum import Enum
 from yaml import safe_load
 from pathlib import Path
 
+from project_root import PROJECT_ROOT
+
 
 class ModelConfig(Enum):
     YOLO = "yolo"
@@ -23,4 +25,8 @@ class ConfigLoader:
         if config_path.value not in config:
             raise KeyError(f"Missing config section: '{config_path.value}'")
 
-        return config[config_path.value]
+        ret = config[config_path.value]
+        if "weights" in ret:
+            ret["weights"] = PROJECT_ROOT / ret["weights"]
+
+        return ret

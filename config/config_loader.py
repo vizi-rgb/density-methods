@@ -2,6 +2,7 @@ from enum import Enum
 from yaml import safe_load
 from pathlib import Path
 
+
 class ModelConfig(Enum):
     YOLO = "yolo"
     YOLO_CROWD = "yolo-crowd"

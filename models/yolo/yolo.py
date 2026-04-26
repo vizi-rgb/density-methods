@@ -1,6 +1,7 @@
 import logging
 
 from ultralytics import YOLO
+from ultralytics.engine.results import Results
 
 from config.config_loader import ConfigLoader, ModelConfig
 from models.base_model import BaseModel
@@ -26,10 +27,10 @@ class YOLOModel(BaseModel):
             self.model = YOLO(self.config["model"])
         return self.model
 
-    def run_prediction(self):
+    def run_prediction(self, show: bool = None) -> list[Results]:
         logger.info("Running YOLO prediction on source: %s", self.dataset_path)
         return self._get_model().predict(
             source=self.dataset_path,
-            show=self.config.get("show", False),
+            show=self.config.get("show", False) if show is None else show,
             classes=self.config["classes"],
         )

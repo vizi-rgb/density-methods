@@ -3,6 +3,19 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+# /* ************************************************************************* */
+# /**
+# * @brief Computes kernel size for Gaussian smoothing if the image
+# * @param sigma Kernel standard deviation
+# * @returns kernel size
+# */
+# static inline int getGaussianKernelSize(float sigma) {
+#                                                      // Compute an appropriate kernel size according to the specified sigma
+# int ksize = (int)cvCeil(2.0f*(1.0f + (sigma - 0.8f) / (0.3f)));
+# ksize |= 1; // kernel should be odd
+# return ksize;
+# }
+
 
 class HeatmapVisualizer:
     def __init__(
@@ -36,7 +49,8 @@ class HeatmapVisualizer:
             )
 
         blurred_heatmap = cv2.GaussianBlur(validated_heatmap, (0, 0), sigmaX=self.sigma)
-        normalized_heatmap = np.clip((blurred_heatmap / self.fixed_max) * 255.0, 0, 255).astype(np.uint8)
+        calibrated_max = self.fixed_max * self._get_peak_gaussian_kernel_value(blurred_heatmap)
+        normalized_heatmap = np.clip((blurred_heatmap / calibrated_max) * 255.0, 0, 255).astype(np.uint8)
         colored_heatmap = cv2.applyColorMap(normalized_heatmap, self.colormap)
 
         overlay = cv2.addWeighted(source_image, 1 - self.alpha, colored_heatmap, self.alpha, 0.0)
@@ -85,3 +99,10 @@ class HeatmapVisualizer:
         if not np.isfinite(heatmap).all():
             raise ValueError("heatmap contains NaN or Inf values")
         return heatmap.astype(np.float32, copy=False)
+
+    def _get_peak_gaussian_kernel_value(self, validated_heatmap: np.ndarray) -> float:
+        dummy_heatmap = np.zeros_like(validated_heatmap)
+        dummy_heatmap[0, 0] = 1.0
+        return cv2.GaussianBlur(dummy_heatmap, (0, 0), sigmaX=self.sigma)[0, 0]
+
+

@@ -1,15 +1,20 @@
-from typing import Any, TypeGuard
+from dataclasses import dataclass, field
+from typing import Any
 
 from ultralytics.engine.results import Results
 
+@dataclass
+class Prediction:
+    points: list[tuple[float, float]] = field(default_factory=list)
+    image_path: str = None
 
 class PredictionsAdapter:
-    def to_points(self, raw_predictions: Any) -> list[list[tuple[float, float]]]:
+    def to_predictions(self, raw_predictions: Any) -> list[Prediction]:
         if raw_predictions is None:
             return []
 
         if self._is_yolo_results_list(raw_predictions):
-            return YoloPredictionsAdapter().to_points(raw_predictions)
+            return YoloPredictionsAdapter().to_predictions(raw_predictions)
 
         raise TypeError(
             "Unsupported predictions format. Expected list[ultralytics.engine.results.Results]."
@@ -23,16 +28,16 @@ class PredictionsAdapter:
 
 
 class YoloPredictionsAdapter(PredictionsAdapter):
-    def to_points(self, raw_predictions: list[Results]) -> list[list[tuple[float, float]]]:
-        points_by_prediction: list[list[tuple[float, float]]] = []
+    def to_predictions(self, raw_predictions: list[Results]) -> list[Prediction]:
+        points_by_prediction: list[Prediction] = []
 
         for prediction in raw_predictions:
             if prediction.boxes is None or prediction.boxes.xywh is None:
-                points_by_prediction.append([])
+                points_by_prediction.append(Prediction())
                 continue
 
-            points_by_prediction.append(
-                [(float(x), float(y) + h / 2) for x, y, w, h in prediction.boxes.xywh.tolist()]
-            )
+            pred = Prediction(image_path=prediction.path)
+            pred.points += [(float(x), float(y) + h / 2) for x, y, w, h in prediction.boxes.xywh.tolist()]
+            points_by_prediction.append(pred)
 
         return points_by_prediction

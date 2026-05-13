@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -33,6 +34,7 @@ class HeatmapVisualizer:
         self.alpha = alpha
         self.sigma = sigma
         self.colormap = colormap
+        self.peak_gaussian_kernel_value = None
 
     def draw(
         self,
@@ -100,9 +102,15 @@ class HeatmapVisualizer:
             raise ValueError("heatmap contains NaN or Inf values")
         return heatmap.astype(np.float32, copy=False)
 
-    def _get_peak_gaussian_kernel_value(self, validated_heatmap: np.ndarray) -> float:
-        dummy_heatmap = np.zeros_like(validated_heatmap)
-        dummy_heatmap[0, 0] = 1.0
-        return cv2.GaussianBlur(dummy_heatmap, (0, 0), sigmaX=self.sigma)[0, 0]
+    def _get_peak_gaussian_kernel_value(self, validated_heatmap: np.ndarray):
+        if self.peak_gaussian_kernel_value is None:
+            dummy_heatmap = np.zeros_like(validated_heatmap)
+            yy, xx = validated_heatmap.shape
+            cy, cx = yy // 2, xx // 2
+            dummy_heatmap[cy, cx] = 1.0
+            self.peak_gaussian_kernel_value = cv2.GaussianBlur(dummy_heatmap, (0, 0), sigmaX=self.sigma)[cy, cx]
+
+        return self.peak_gaussian_kernel_value
+
 
 

@@ -33,4 +33,7 @@ class YOLOModel(BaseModel):
             source=self.dataset_path,
             show=self.config.get("show", False) if show is None else show,
             classes=self.config["classes"],
+            device=self.config["device"],
+            conf=self.config["conf"],
+            iou=self.config["iou"],
         )

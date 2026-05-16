@@ -3,6 +3,9 @@ yolo:
   classes: [0]
   show: true
   logging: true
+  conf: 0.25
+  iou: 0.7
+  device: cpu
 
 yolo-crowd:
   weights: data/weights/yolo-crowd.pt

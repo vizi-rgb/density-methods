@@ -10,5 +10,9 @@ class BaseModel(ABC):
         self.dataset_path = PROJECT_ROOT / dataset_path
 
     @abstractmethod
-    def run_prediction(self, show: bool = None):
+    def run_prediction(self, show: bool = None, stream: bool = False):
+        pass
+
+    @abstractmethod
+    def run_tracking(self, show: bool = None, stream: bool = False):
         pass

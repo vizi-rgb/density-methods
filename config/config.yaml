@@ -14,7 +14,7 @@ yolo-crowd:
   show: false
   conf: 0.25
   iou: 0.45
-  device: ""
+  device: cpu
   save_txt: false
   save_conf: false
   nosave: false

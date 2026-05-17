@@ -27,7 +27,7 @@ class YOLOModel(BaseModel):
             self.model = YOLO(self.config["weights"])
         return self.model
 
-    def run_prediction(self, show: bool = None) -> list[Results]:
+    def run_prediction(self, show: bool = None, stream: bool = False) -> list[Results]:
         logger.info("Running YOLO prediction on source: %s", self.dataset_path)
         return self._get_model().predict(
             source=self.dataset_path,
@@ -36,4 +36,17 @@ class YOLOModel(BaseModel):
             device=self.config["device"],
             conf=self.config["conf"],
             iou=self.config["iou"],
+            stream=stream
+        )
+
+    def run_tracking(self, show: bool = None, stream: bool = False):
+        logger.info("Running YOLO tracking on source: %s", self.dataset_path)
+        return self._get_model().track(
+            source=self.dataset_path,
+            show=self.config.get("show", False) if show is None else show,
+            classes=self.config["classes"],
+            device=self.config["device"],
+            conf=self.config["conf"],
+            iou=self.config["iou"],
+            stream=stream
         )

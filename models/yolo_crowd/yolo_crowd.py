@@ -193,7 +193,7 @@ class YOLOCrowdModel(BaseModel):
 
         return self.model
 
-    def run_prediction(self, show: bool = None):
+    def run_prediction(self, show: bool = None, stream: bool = False) -> list[dict]:
         options = self._build_options()
         model = self._get_model()
         runtime = self.runtime
@@ -352,3 +352,6 @@ class YOLOCrowdModel(BaseModel):
             cv2.destroyAllWindows()
 
         return predictions
+
+    def run_tracking(self, show: bool = None, stream: bool = False) -> list[dict]:
+        raise NotImplementedError("Inference is not supported for YOLO-CROWD models.")

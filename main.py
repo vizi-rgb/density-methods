@@ -2,7 +2,8 @@ from pathlib import Path
 
 import cv2
 
-from core.adapter.predictions_adapter import PredictionsAdapter
+from core.adapter.predictions_adapter import PredictionsAdapter, StreamedPredictionsAdapter
+from core.adapter.predictions_adapter_factory import PredictionsAdapterFactory, StreamedPredictionsAdapterFactory
 from core.heatmap.heatmap_factory import HeatmapFactory
 from core.heatmap.heatmap_visualizer import HeatmapVisualizer
 from models.yolo.yolo import YOLOModel
@@ -19,18 +20,17 @@ def _resolve_path(image_path: str) -> Path:
 
 def main() -> None:
     model = YOLOModel(path)
-    raw_predictions = model.run_prediction(show=False)
-    predictions = PredictionsAdapter().to_predictions(raw_predictions)
-
-    if not predictions:
-        raise RuntimeError("No predictions were produced.")
+    raw_predictions = model.run_tracking(show=False, stream=True)
+    predictions_adapter = StreamedPredictionsAdapterFactory.for_model(model)
 
     hf = HeatmapFactory(480, 640)
-    hv = HeatmapVisualizer(fixed_max=1000, alpha=0.5, sigma=15)
+    hv = HeatmapVisualizer(fixed_max=100, alpha=0.5, sigma=10)
     path_base = Path("out")
-    for num, prediction in enumerate(predictions):
-        heatmap = hf.get_heatmap_from_streamed_prediction(prediction)
-        hv.draw(heatmap, prediction.image_path, save_path= path_base / f"{num}.png")
+
+    for num, prediction in enumerate(raw_predictions):
+        processed_prediction = predictions_adapter.to_predictions(prediction)
+        heatmap = hf.get_heatmap_from_streamed_prediction(processed_prediction)
+        hv.draw(heatmap["down"], processed_prediction.image_path, save_path= path_base / f"{num}.png")
 
 
 if __name__ == "__main__":

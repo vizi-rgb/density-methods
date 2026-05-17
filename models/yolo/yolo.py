@@ -48,5 +48,6 @@ class YOLOModel(BaseModel):
             device=self.config["device"],
             conf=self.config["conf"],
             iou=self.config["iou"],
-            stream=stream
+            stream=stream,
+            persist=True
         )

@@ -1,31 +1,29 @@
+from abc import abstractmethod, ABC
 from dataclasses import dataclass, field
 from typing import Any
 
 from ultralytics.engine.results import Results
+
+from models.base_model import BaseModel
+from models.yolo.yolo import YOLOModel
+
 
 @dataclass
 class Prediction:
     points: list[tuple[float, float]] = field(default_factory=list)
     image_path: str = None
 
-class PredictionsAdapter:
+class PredictionsAdapter(ABC):
+
+    @abstractmethod
     def to_predictions(self, raw_predictions: Any) -> list[Prediction]:
-        if raw_predictions is None:
-            return []
+        pass
 
-        if self._is_yolo_results_list(raw_predictions):
-            return YoloPredictionsAdapter().to_predictions(raw_predictions)
+class StreamedPredictionsAdapter(ABC):
 
-        raise TypeError(
-            "Unsupported predictions format. Expected list[ultralytics.engine.results.Results]."
-        )
-
-    @staticmethod
-    def _is_yolo_results_list(raw_predictions):
-        return isinstance(raw_predictions, list) and all(
-            isinstance(prediction, Results) for prediction in raw_predictions
-        )
-
+    @abstractmethod
+    def to_predictions(self, raw_prediction: Any) -> Prediction:
+        pass
 
 class YoloPredictionsAdapter(PredictionsAdapter):
     def to_predictions(self, raw_predictions: list[Results]) -> list[Prediction]:
@@ -41,3 +39,12 @@ class YoloPredictionsAdapter(PredictionsAdapter):
             points_by_prediction.append(pred)
 
         return points_by_prediction
+
+class StreamedYoloPredictionsAdapter(StreamedPredictionsAdapter):
+    def to_predictions(self, raw_prediction: Results) -> Prediction:
+        if raw_prediction.boxes is None or raw_prediction.boxes.xywh is None or raw_prediction.path is None:
+            return Prediction()
+
+        pred = Prediction(image_path=raw_prediction.path)
+        pred.points += [(float(x), float(y) + h / 2) for x, y, w, h in raw_prediction.boxes.xywh.tolist()]
+        return pred

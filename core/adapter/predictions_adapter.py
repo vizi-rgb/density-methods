@@ -4,13 +4,15 @@ from typing import Any
 
 from ultralytics.engine.results import Results
 
-from models.base_model import BaseModel
-from models.yolo.yolo import YOLOModel
-
+@dataclass
+class Point:
+    x: float
+    y: float
+    track_id: int = 0
 
 @dataclass
 class Prediction:
-    points: list[tuple[float, float]] = field(default_factory=list)
+    points: list[Point] = field(default_factory=list)
     image_path: str = None
 
 class PredictionsAdapter(ABC):
@@ -35,7 +37,13 @@ class YoloPredictionsAdapter(PredictionsAdapter):
                 continue
 
             pred = Prediction(image_path=prediction.path)
-            pred.points += [(float(x), float(y) + h / 2) for x, y, w, h in prediction.boxes.xywh.tolist()]
+            if prediction.boxes.is_track:
+                for box_id, box in zip(prediction.boxes.id.tolist(), prediction.boxes.xywh.tolist()):
+                    x, y, w, h = box
+                    pred.points += [Point(float(x), float(y) + h / 2, box_id)]
+            else:
+                pred.points += [Point(float(x), float(y) + h / 2) for x, y, w, h in prediction.boxes.xywh.tolist()]
+
             points_by_prediction.append(pred)
 
         return points_by_prediction
@@ -46,5 +54,10 @@ class StreamedYoloPredictionsAdapter(StreamedPredictionsAdapter):
             return Prediction()
 
         pred = Prediction(image_path=raw_prediction.path)
-        pred.points += [(float(x), float(y) + h / 2) for x, y, w, h in raw_prediction.boxes.xywh.tolist()]
+        if raw_prediction.boxes.is_track:
+            for box_id, box in zip(raw_prediction.boxes.id.tolist(), raw_prediction.boxes.xywh.tolist()):
+                x, y, w, h = box
+                pred.points += [Point(float(x), float(y) + h / 2, box_id)]
+        else:
+            pred.points += [Point(float(x), float(y) + h / 2) for x, y, w, h in raw_prediction.boxes.xywh.tolist()]
         return pred

@@ -20,7 +20,7 @@ class HeatmapFactory:
             x = min(max(math.floor(x), 0), self.width - 1)
             y = min(max(math.floor(y), 0), self.height - 1)
             self.heatmap[y, x] += 1
-        print(f"Returning heatmap {prediction.image_path}")
+        print(f"Returning heatmap")
         return self.heatmap
 
     def get_heatmap_from_predictions(self, predictions: list[Prediction]):

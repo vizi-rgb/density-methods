@@ -2,6 +2,7 @@ from abc import abstractmethod, ABC
 from dataclasses import dataclass, field
 from typing import Any
 
+import numpy as np
 from ultralytics.engine.results import Results
 
 @dataclass
@@ -13,7 +14,7 @@ class Point:
 @dataclass
 class Prediction:
     points: list[Point] = field(default_factory=list)
-    image_path: str = None
+    image: np.ndarray = None
 
 class PredictionsAdapter(ABC):
 
@@ -36,7 +37,7 @@ class YoloPredictionsAdapter(PredictionsAdapter):
                 points_by_prediction.append(Prediction())
                 continue
 
-            pred = Prediction(image_path=prediction.path)
+            pred = Prediction(image=prediction.orig_img)
             if prediction.boxes.is_track:
                 for box_id, box in zip(prediction.boxes.id.tolist(), prediction.boxes.xywh.tolist()):
                     x, y, w, h = box
@@ -53,7 +54,7 @@ class StreamedYoloPredictionsAdapter(StreamedPredictionsAdapter):
         if raw_prediction.boxes is None or raw_prediction.boxes.xywh is None or raw_prediction.path is None:
             return Prediction()
 
-        pred = Prediction(image_path=raw_prediction.path)
+        pred = Prediction(image=raw_prediction.orig_img)
         if raw_prediction.boxes.is_track:
             for box_id, box in zip(raw_prediction.boxes.id.tolist(), raw_prediction.boxes.xywh.tolist()):
                 x, y, w, h = box

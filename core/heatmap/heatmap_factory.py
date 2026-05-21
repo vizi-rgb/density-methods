@@ -2,7 +2,6 @@ import math
 
 import cv2
 import numpy as np
-
 from core.adapter.predictions_adapter import Prediction
 
 
@@ -21,7 +20,7 @@ class HeatmapFactory:
 
     def get_heatmap_from_streamed_prediction(self, prediction: Prediction):
         self._update_heatmap(prediction)
-        print(f"Returning heatmap {prediction.image_path}")
+        print(f"Returning heatmap")
         return self.heatmap
 
     def get_heatmap_from_predictions(self, predictions: list[Prediction]):

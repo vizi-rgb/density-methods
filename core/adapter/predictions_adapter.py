@@ -61,4 +61,5 @@ class StreamedYoloPredictionsAdapter(StreamedPredictionsAdapter):
                 pred.points += [Point(float(x), float(y) + h / 2, box_id)]
         else:
             pred.points += [Point(float(x), float(y) + h / 2) for x, y, w, h in raw_prediction.boxes.xywh.tolist()]
+
         return pred

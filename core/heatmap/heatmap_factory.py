@@ -3,15 +3,20 @@ import cv2
 import numpy as np
 from typing import NamedTuple
 from core.adapter.predictions_adapter import Prediction, Point
+from core.util import DataSourceInfo
+
 
 class HeatmapPoint(NamedTuple):
     x: int
     y: int
 
 class HeatmapFactory:
-    def __init__(self, height, width):
+    def __init__(self, height, width, frames_count, fps):
         self.height = height
         self.width = width
+        self.frames_count = frames_count
+        self.fps = fps
+        self.frames_processed = 0
         self.heatmap = {
             "all": np.zeros((self.height, self.width), dtype=np.float32),
             "static": np.zeros((self.height, self.width), dtype=np.float32),
@@ -22,9 +27,15 @@ class HeatmapFactory:
         }
         self.id_tracker = dict()
 
+    @classmethod
+    def from_metadata(cls, metadata: DataSourceInfo):
+        return cls(metadata.height, metadata.width, metadata.frames, metadata.fps)
+
+
     def get_heatmap_from_streamed_prediction(self, prediction: Prediction):
         self._process_prediction(prediction)
-        print(f"Returning heatmap")
+        print(f"Returning heatmap [{self.frames_processed}/{self.frames_count}]")
+        self.frames_processed += 1
         return self.heatmap
 
     def get_heatmap_from_predictions(self, predictions: list[Prediction]):

@@ -8,11 +8,11 @@ class DataSourceInfo:
     height: int
     width: int
     frames: int
-    fps: float | None = None
+    fps: int | None = None
 
 
 class DataSourceInfoReader:
-    VIDEO_FILE_EXTENSION = ".mp4"
+    _VIDEO_FILE_EXTENSION = ".mp4"
 
     def __init__(self, source_path: str | Path) -> None:
         self.source_path = Path(source_path)
@@ -36,7 +36,7 @@ class DataSourceInfoReader:
         return DataSourceInfo(height=height, width=width, frames=len(image_files), fps=None)
 
     def _from_file(self, file_path: Path) -> DataSourceInfo:
-        if file_path.suffix.lower() == self.VIDEO_FILE_EXTENSION:
+        if file_path.suffix.lower() == self._VIDEO_FILE_EXTENSION:
             return self._from_video(file_path)
 
         image = self._load_image(file_path)
@@ -51,7 +51,7 @@ class DataSourceInfoReader:
             width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
             frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
-            fps = float(capture.get(cv2.CAP_PROP_FPS))
+            fps = int(capture.get(cv2.CAP_PROP_FPS))
         finally:
             capture.release()
 

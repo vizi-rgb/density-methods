@@ -25,6 +25,7 @@ class HeatmapFactory:
             "left": np.zeros((self.height, self.width), dtype=np.float32),
             "right": np.zeros((self.height, self.width), dtype=np.float32),
         }
+        self.intermediate_heatmap = np.zeros((self.height, self.width), dtype=np.float32)
         self.id_tracker = dict()
 
     @classmethod
@@ -64,14 +65,19 @@ class HeatmapFactory:
 
     def _update_directional_heatmap(self, prev_pos: HeatmapPoint, current_pos: HeatmapPoint, direction_label: str):
         if direction_label != "static":
-            cv2.line(self.heatmap["all"], prev_pos, current_pos, 1, 1)
-            cv2.line(self.heatmap[direction_label], prev_pos, current_pos, 1, 1)
+            self._draw_line(self.heatmap["all"], prev_pos, current_pos)
+            self._draw_line(self.heatmap[direction_label], prev_pos, current_pos)
         else:
             self._update_point_heatmap(prev_pos, "static")
             self._update_point_heatmap(prev_pos, "all")
 
     def _update_point_heatmap(self, point: HeatmapPoint, direction_label: str = "all"):
         self.heatmap[direction_label][point.y, point.x] += 1
+
+    def _draw_line(self, heatmap: np.ndarray, p1: HeatmapPoint, p2: HeatmapPoint):
+        cv2.line(self.intermediate_heatmap, p1, p2, 1, 1)
+        heatmap += self.intermediate_heatmap
+        cv2.line(self.intermediate_heatmap, p1, p2, 0, 1)
 
     def _get_direction_label(self, p1: HeatmapPoint, p2: HeatmapPoint):
         dx = p2.x - p1.x

@@ -2,6 +2,7 @@ from pathlib import Path
 from core.adapter.predictions_adapter_factory import StreamedPredictionsAdapterFactory
 from core.heatmap.heatmap_factory import HeatmapFactory
 from core.heatmap.heatmap_visualizer import HeatmapVisualizer
+from core.util import DataSourceInfoReader
 from models.yolo.yolo import YOLOModel
 from project_root import PROJECT_ROOT
 
@@ -19,15 +20,16 @@ def main() -> None:
     model = YOLOModel(path)
     raw_predictions = model.run_tracking(show=False, stream=True)
     predictions_adapter = StreamedPredictionsAdapterFactory.for_model(model)
+    metadata = DataSourceInfoReader(path).read()
 
-    hf = HeatmapFactory(1080, 1920)
+    hf = HeatmapFactory.from_metadata(metadata)
     hv = HeatmapVisualizer(fixed_max=60, alpha=0.5, sigma=10)
     path_base= Path("out")
 
     for num, prediction in enumerate(raw_predictions):
         processed_prediction = predictions_adapter.to_predictions(prediction)
         heatmap = hf.get_heatmap_from_streamed_prediction(processed_prediction)
-        hv.draw(heatmap["down"], processed_prediction.image, save_path= path_base / f"{num}.png")
+        hv.draw(heatmap["all"], processed_prediction.image, save_path= path_base / f"{num}.png")
 
 
 if __name__ == "__main__":

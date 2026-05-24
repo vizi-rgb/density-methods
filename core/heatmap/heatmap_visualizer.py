@@ -106,9 +106,8 @@ class HeatmapVisualizer:
         if self.peak_gaussian_kernel_value is None:
             dummy_heatmap = np.zeros_like(validated_heatmap)
             yy, xx = validated_heatmap.shape
-            cy, cx = yy // 2, xx // 2
-            dummy_heatmap[cy, cx] = 1.0
-            self.peak_gaussian_kernel_value = cv2.GaussianBlur(dummy_heatmap, (0, 0), sigmaX=self.sigma)[cy, cx]
+            cv2.line(dummy_heatmap, (0, 0), (xx, yy), 1, 1)
+            self.peak_gaussian_kernel_value = cv2.GaussianBlur(dummy_heatmap, (0, 0), sigmaX=self.sigma).max()
 
         return self.peak_gaussian_kernel_value
 

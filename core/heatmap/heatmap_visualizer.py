@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Any
 
 import cv2
 import numpy as np
@@ -51,16 +50,24 @@ class HeatmapVisualizer:
             )
 
         blurred_heatmap = cv2.GaussianBlur(validated_heatmap, (0, 0), sigmaX=self.sigma)
-        calibrated_max = self.fixed_max * self._get_peak_gaussian_kernel_value(blurred_heatmap)
-        normalized_heatmap = np.clip((blurred_heatmap / calibrated_max) * 255.0, 0, 255).astype(np.uint8)
+        calibrated_max = self.fixed_max * self._get_peak_gaussian_kernel_value(
+            blurred_heatmap
+        )
+        normalized_heatmap = np.clip(
+            (blurred_heatmap / calibrated_max) * 255.0, 0, 255
+        ).astype(np.uint8)
         colored_heatmap = cv2.applyColorMap(normalized_heatmap, self.colormap)
 
-        overlay = cv2.addWeighted(source_image, 1 - self.alpha, colored_heatmap, self.alpha, 0.0)
+        overlay = cv2.addWeighted(
+            source_image, 1 - self.alpha, colored_heatmap, self.alpha, 0.0
+        )
 
         if save_path is not None:
             output_path = Path(save_path)
             if not cv2.imwrite(str(output_path), overlay):
-                raise RuntimeError(f"Could not save overlay image to path: {output_path}")
+                raise RuntimeError(
+                    f"Could not save overlay image to path: {output_path}"
+                )
 
         return overlay
 
@@ -81,7 +88,9 @@ class HeatmapVisualizer:
         elif image.ndim == 3 and image.shape[2] == 4:
             image = cv2.cvtColor(image, cv2.COLOR_BGRA2BGR)
         elif image.ndim != 3 or image.shape[2] != 3:
-            raise ValueError(f"Expected image shape (H, W) or (H, W, 3/4), got: {image.shape}")
+            raise ValueError(
+                f"Expected image shape (H, W) or (H, W, 3/4), got: {image.shape}"
+            )
 
         if not np.issubdtype(image.dtype, np.number):
             raise ValueError(f"Expected numeric image array dtype, got: {image.dtype}")
@@ -107,9 +116,8 @@ class HeatmapVisualizer:
             dummy_heatmap = np.zeros_like(validated_heatmap)
             yy, xx = validated_heatmap.shape
             cv2.line(dummy_heatmap, (0, 0), (xx, yy), 1, 1)
-            self.peak_gaussian_kernel_value = cv2.GaussianBlur(dummy_heatmap, (0, 0), sigmaX=self.sigma).max()
+            self.peak_gaussian_kernel_value = float(
+                cv2.GaussianBlur(dummy_heatmap, (0, 0), sigmaX=self.sigma).max()
+            )
 
         return self.peak_gaussian_kernel_value
-
-
-

@@ -9,6 +9,7 @@ from project_root import PROJECT_ROOT
 # path = "data/datasets/mall_dataset/frames/"
 path = "data/datasets/yt/walking_people.mp4"
 
+
 def _resolve_path(image_path: str) -> Path:
     path_obj = Path(image_path)
     if path_obj.is_absolute():
@@ -23,13 +24,17 @@ def main() -> None:
     metadata = DataSourceInfoReader(path).read()
 
     hf = HeatmapFactory.from_metadata(metadata)
-    hv = HeatmapVisualizer(fixed_max=60, alpha=0.5, sigma=10)
-    path_base= Path("out")
+    hv = HeatmapVisualizer(fixed_max=2, alpha=0.5, sigma=15)
+    path_base = Path("out")
 
     for num, prediction in enumerate(raw_predictions):
         processed_prediction = predictions_adapter.to_predictions(prediction)
         heatmap = hf.get_heatmap_from_streamed_prediction(processed_prediction)
-        hv.draw(heatmap["all"], processed_prediction.image, save_path= path_base / f"{num}.png")
+        hv.draw(
+            heatmap["down"],
+            processed_prediction.image,
+            save_path=path_base / f"{num}.png",
+        )
 
 
 if __name__ == "__main__":

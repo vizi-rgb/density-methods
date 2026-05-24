@@ -3,6 +3,7 @@ from pathlib import Path
 
 import cv2
 
+
 @dataclass(frozen=True)
 class DataSourceInfo:
     height: int
@@ -33,7 +34,9 @@ class DataSourceInfoReader:
 
         first_image = self._load_image(image_files[0])
         height, width = first_image.shape[:2]
-        return DataSourceInfo(height=height, width=width, frames=len(image_files), fps=None)
+        return DataSourceInfo(
+            height=height, width=width, frames=len(image_files), fps=None
+        )
 
     def _from_file(self, file_path: Path) -> DataSourceInfo:
         if file_path.suffix.lower() == self._VIDEO_FILE_EXTENSION:

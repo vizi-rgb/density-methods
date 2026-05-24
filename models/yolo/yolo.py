@@ -36,7 +36,7 @@ class YOLOModel(BaseModel):
             device=self.config["device"],
             conf=self.config["conf"],
             iou=self.config["iou"],
-            stream=stream
+            stream=stream,
         )
 
     def run_tracking(self, show: bool = None, stream: bool = False):
@@ -49,5 +49,5 @@ class YOLOModel(BaseModel):
             conf=self.config["conf"],
             iou=self.config["iou"],
             stream=stream,
-            persist=True
+            persist=True,
         )

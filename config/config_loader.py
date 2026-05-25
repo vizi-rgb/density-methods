@@ -10,9 +10,16 @@ class ModelConfig(Enum):
     YOLO_CROWD = "yolo-crowd"
 
 
+class TrackerConfig(Enum):
+    BOTSORT = "botsort"
+
+
 class ConfigLoader:
     _base_path = Path(__file__).resolve().parent
     _config_file = _base_path / "config.yaml"
+    _tracker_config_files = {
+        TrackerConfig.BOTSORT: _base_path / "botsort.yaml",
+    }
 
     @classmethod
     def load_config(cls, config_path: ModelConfig):
@@ -30,3 +37,22 @@ class ConfigLoader:
             ret["weights"] = PROJECT_ROOT / ret["weights"]
 
         return ret
+
+    @classmethod
+    def load_tracker_config(cls, config_path: TrackerConfig):
+        if not isinstance(config_path, TrackerConfig):
+            raise TypeError("config_path must be of type TrackerConfig")
+        if config_path not in cls._tracker_config_files:
+            raise KeyError(f"Missing tracker config: '{config_path.value}'")
+
+        config_file = cls._tracker_config_files[config_path]
+        if not config_file.exists():
+            raise FileNotFoundError(f"Tracker config file not found: {config_file}")
+
+        with open(config_file) as f:
+            config = safe_load(f) or {}
+
+        if not config:
+            raise ValueError(f"Tracker config is empty: {config_file}")
+
+        return config

@@ -4,3 +4,5 @@ data/datasets/*
 !data/datasets/.gitkeep
 data/weights/*
 !data/weights/.gitkeep
+out
+results

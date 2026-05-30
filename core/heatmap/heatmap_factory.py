@@ -38,13 +38,13 @@ class HeatmapFactory:
         self.id_tracker = dict()
 
     @classmethod
-    def from_metadata(cls, metadata: DataSourceInfo):
+    def from_metadata(cls, metadata: DataSourceInfo, momentum_buffer_size: int = 8):
         return cls(
             metadata.height,
             metadata.width,
             metadata.frames,
             metadata.fps,
-            metadata.fps // 3 if metadata.fps else None,
+            momentum_buffer_size
         )
 
     def get_heatmap_from_streamed_prediction(self, prediction: Prediction):

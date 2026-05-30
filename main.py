@@ -23,7 +23,7 @@ def main() -> None:
     predictions_adapter = StreamedPredictionsAdapterFactory.for_model(model)
     metadata = DataSourceInfoReader(path).read()
 
-    hf = HeatmapFactory.from_metadata(metadata)
+    hf = HeatmapFactory.from_metadata(metadata, metadata.fps // 3 if metadata.fps else 1)
     hv = HeatmapVisualizer(fixed_max=2, alpha=0.5, sigma=15)
     path_base = Path("out")
 

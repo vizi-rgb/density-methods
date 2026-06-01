@@ -2,7 +2,7 @@ from pathlib import Path
 
 from config.config_loader import ConfigLoader, TrackerConfig
 from core.adapter.predictions_adapter_factory import StreamedPredictionsAdapterFactory
-from core.heatmap.heatmap_factory import HeatmapFactory
+from core.heatmap.heatmap_accumulator_builder import HeatmapAccumulatorBuilder
 from core.heatmap.heatmap_visualizer import HeatmapVisualizer
 from core.util import DataSourceInfoReader
 from models.yolo.yolo import YOLOModel
@@ -33,10 +33,15 @@ def main() -> None:
     predictions_adapter = StreamedPredictionsAdapterFactory.for_model(model)
     metadata = DataSourceInfoReader(path).read()
     tracker_config = ConfigLoader.load_tracker_config(TrackerConfig.BOTSORT)
-    # fps = metadata.fps // 3 if metadata.fps else 1
-    fps = 15
-
-    hf = HeatmapFactory.from_metadata(metadata, fps, tracker_config.get("track_buffer", 10))
+    hf = (
+        HeatmapAccumulatorBuilder()
+            .with_height(metadata.height)
+            .with_width(metadata.width)
+            .with_frames(metadata.frames)
+            .with_fps(metadata.fps)
+            .with_momentum_buffer_size(tracker_config.get("track_buffer", 10))
+            .build()
+    )
     hv = HeatmapVisualizer(fixed_max=2, alpha=0.5, sigma=15)
 
     for direction, save_path in to_save.items():

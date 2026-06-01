@@ -1,19 +1,25 @@
+from __future__ import annotations
+
 import math
 import cv2
 import numpy as np
+from typing import TYPE_CHECKING
 from core.adapter.predictions_adapter import Prediction, Point
 from core.heatmap.momentum import MomentumTracker, TrackedPoint, TrackUpdate
-from core.util import DataSourceInfo
+
+if TYPE_CHECKING:
+    from core.heatmap.heatmap_accumulator_builder import HeatmapAccumulatorBuilder
 
 
-class HeatmapFactory:
-    def __init__(
-        self, height, width, frames_count, fps, momentum_buffer_size: int = 1, max_lost_frames: int = 10
-    ):
-        self.height = height
-        self.width = width
-        self.frames_count = frames_count
-        self.fps = fps
+class HeatmapAccumulator:
+    def __init__(self, builder: "HeatmapAccumulatorBuilder"):
+        self.height = builder.height
+        self.width = builder.width
+        self.frames_count = builder.frames_count
+        if self.height is None or self.width is None or self.frames_count is None:
+            raise ValueError("Builder fields must be set before use.")
+
+        self.fps = builder.fps
         self.frames_processed = 0
         self.heatmap = {
             "all": np.zeros((self.height, self.width), dtype=np.float32),
@@ -26,17 +32,9 @@ class HeatmapFactory:
         self.intermediate_heatmap = np.zeros(
             (self.height, self.width), dtype=np.float32
         )
-        self.momentum_tracker = MomentumTracker(momentum_buffer_size, max_lost_frames)
-
-    @classmethod
-    def from_metadata(cls, metadata: DataSourceInfo, momentum_buffer_size: int = 8, max_lost_frames: int = 10):
-        return cls(
-            metadata.height,
-            metadata.width,
-            metadata.frames,
-            metadata.fps,
-            momentum_buffer_size,
-            max_lost_frames,
+        self.momentum_tracker = MomentumTracker(
+            builder.momentum_buffer_size,
+            builder.max_lost_frames,
         )
 
     def get_heatmap_from_streamed_prediction(self, prediction: Prediction):

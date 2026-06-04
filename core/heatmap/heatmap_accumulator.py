@@ -10,6 +10,7 @@ from core.heatmap.momentum import MomentumTracker, TrackedPoint, TrackUpdate
 if TYPE_CHECKING:
     from core.heatmap.heatmap_accumulator_builder import HeatmapAccumulatorBuilder
 
+EPS = 0.01
 
 class HeatmapAccumulator:
     def __init__(self, builder: "HeatmapAccumulatorBuilder"):
@@ -37,7 +38,15 @@ class HeatmapAccumulator:
             builder.max_lost_frames,
         )
 
+        if self.fps and builder.half_life_time:
+            self.decay_factor = 0.5 ** (1 / (builder.half_life_time * self.fps))
+        else:
+            self.decay_factor = None
+
     def get_heatmap_from_streamed_prediction(self, prediction: Prediction):
+        if self.decay_factor:
+           self._apply_decay()
+
         self._process_prediction(prediction)
         print(f"Returning heatmap [{self.frames_processed + 1}/{self.frames_count}]")
         self.frames_processed += 1
@@ -140,3 +149,8 @@ class HeatmapAccumulator:
             return "down"
         else:
             return "right"
+
+    def _apply_decay(self):
+        for key in self.heatmap:
+            self.heatmap[key] *= self.decay_factor
+            self.heatmap[key][self.heatmap[key] < EPS] = 0.0

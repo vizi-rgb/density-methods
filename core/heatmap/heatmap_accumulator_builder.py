@@ -13,6 +13,7 @@ class HeatmapAccumulatorBuilder:
     width: int | None = None
     frames_count: int | None = None
     fps: int | None = None
+    half_life_time: int | None = None
     momentum_buffer_size: int = 1
     max_lost_frames: int = 10
 
@@ -40,6 +41,10 @@ class HeatmapAccumulatorBuilder:
 
     def with_max_lost_frames(self, max_lost_frames: int) -> "HeatmapAccumulatorBuilder":
         self.max_lost_frames = max_lost_frames
+        return self
+
+    def with_half_life_time(self, half_life_time_in_seconds: int) -> "HeatmapAccumulatorBuilder":
+        self.half_life_time = half_life_time_in_seconds
         return self
 
     def build(self) -> "HeatmapAccumulator":

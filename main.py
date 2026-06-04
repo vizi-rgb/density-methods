@@ -24,6 +24,7 @@ to_save = {
     "static": Path("out/static"),
     "right": Path("out/right"),
     "left": Path("out/left"),
+    "all": Path("out/all"),
 }
 
 
@@ -39,10 +40,12 @@ def main() -> None:
             .with_width(metadata.width)
             .with_frames(metadata.frames)
             .with_fps(metadata.fps)
-            .with_momentum_buffer_size(tracker_config.get("track_buffer", 10))
+            .with_momentum_buffer_size(10)
+            .with_half_life_time(3)
+            .with_max_lost_frames(tracker_config.get("track_buffer", 10))
             .build()
     )
-    hv = HeatmapVisualizer(fixed_max=2, alpha=0.5, sigma=15)
+    hv = HeatmapVisualizer(fixed_max=3, alpha=0.5, sigma=25)
 
     for direction, save_path in to_save.items():
         save_path.mkdir(parents=True, exist_ok=True)

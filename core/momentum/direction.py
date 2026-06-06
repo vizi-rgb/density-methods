@@ -11,13 +11,14 @@ class Direction(Enum):
     STATIC = "static"
 
 class DirectionUtil:
+    STATIC_THRESHOLD = 5
 
     @classmethod
     def get_direction_label(cls, p1: TrackedPoint, p2: TrackedPoint):
         dx = p2.x - p1.x
         dy = p2.y - p1.y
 
-        if math.hypot(dx, dy) < 5:
+        if math.hypot(dx, dy) < cls.STATIC_THRESHOLD:
             return Direction.STATIC.value
 
         angle = math.degrees(math.atan2(-dy, dx))

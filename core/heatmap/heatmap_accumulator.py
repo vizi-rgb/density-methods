@@ -63,7 +63,7 @@ class HeatmapAccumulator:
 
         updates = self.momentum_tracker.flush_lost_tracks_buffers(set(point.track_id for point in prediction.points))
         for update in updates:
-            self._execute_track_update(update, None)
+            self._execute_track_update(update)
 
     def _update_heatmap(self, current_pos: Point):
         clamped_current_pos = self._clamp_point_to_heatmap_point(current_pos)
@@ -76,28 +76,23 @@ class HeatmapAccumulator:
             self._update_point_heatmap(clamped_current_pos)
             return
 
-        if update.first_point is None or update.last_point is None:
+        if update.first_point is None or update.last_point is None or update.current_point is None:
             raise RuntimeError("MomentumTracker returned incomplete track update.")
 
         if update.processed_segments:
             self._execute_track_update(update)
-        else:
-            self._update_directional_heatmap(
-                update.last_point, clamped_current_pos, "all"
-            )
+
+        self._update_directional_heatmap(
+            update.last_point, update.current_point, "all"
+        )
 
     def _execute_track_update(self, update: TrackUpdate):
-        if update.first_point is None or update.last_point is None:
+        if update.first_point is None or update.last_point is None or update.direction_label is None:
             raise RuntimeError("MomentumTracker returned incomplete track update.")
-
-        direction_label = self._get_direction_label(
-            update.first_point,
-            update.last_point,
-        )
 
         for first_point, second_point in update.processed_segments:
             self._update_directional_heatmap(
-                first_point, second_point, direction_label
+                first_point, second_point, update.direction_label
             )
 
     def _update_directional_heatmap(
@@ -125,26 +120,6 @@ class HeatmapAccumulator:
             x=min(max(math.floor(point.x), 0), self.width - 1),
             y=min(max(math.floor(point.y), 0), self.height - 1),
         )
-
-    def _get_direction_label(self, p1: TrackedPoint, p2: TrackedPoint):
-        dx = p2.x - p1.x
-        dy = p2.y - p1.y
-
-        if math.hypot(dx, dy) < 5:
-            return "static"
-
-        angle = math.degrees(math.atan2(-dy, dx))
-        if angle < 0:
-            angle += 360
-
-        if 45 <= angle < 135:
-            return "up"
-        elif 135 <= angle < 225:
-            return "left"
-        elif 225 <= angle < 315:
-            return "down"
-        else:
-            return "right"
 
     def _apply_decay(self):
         for key in self.heatmap:

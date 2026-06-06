@@ -1,22 +1,9 @@
 from abc import abstractmethod, ABC
-from dataclasses import dataclass, field
 from typing import Any
 
-import numpy as np
 from ultralytics.engine.results import Results
 
-
-@dataclass
-class Point:
-    x: float
-    y: float
-    track_id: int = 0
-
-
-@dataclass
-class Prediction:
-    points: list[Point] = field(default_factory=list)
-    image: np.ndarray = None
+from core.adapter.domain import Prediction, Point
 
 
 class PredictionsAdapter(ABC):

@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 from typing import TYPE_CHECKING
 from core.adapter.predictions_adapter import Prediction, Point
-from core.heatmap.momentum import MomentumTracker, TrackedPoint, TrackUpdate
+from core.momentum.momentum import MomentumTracker, TrackedPoint, TrackUpdate
 
 if TYPE_CHECKING:
     from core.heatmap.heatmap_accumulator_builder import HeatmapAccumulatorBuilder
@@ -79,29 +79,25 @@ class HeatmapAccumulator:
         if update.first_point is None or update.last_point is None:
             raise RuntimeError("MomentumTracker returned incomplete track update.")
 
-        if update.buffer_full:
-            self._execute_track_update(update, clamped_current_pos)
+        if update.processed_segments:
+            self._execute_track_update(update)
         else:
             self._update_directional_heatmap(
                 update.last_point, clamped_current_pos, "all"
             )
 
-    def _execute_track_update(self, update: TrackUpdate, clamped_current_pos: TrackedPoint | None):
+    def _execute_track_update(self, update: TrackUpdate):
         if update.first_point is None or update.last_point is None:
             raise RuntimeError("MomentumTracker returned incomplete track update.")
 
         direction_label = self._get_direction_label(
             update.first_point,
-            clamped_current_pos if clamped_current_pos is not None else update.last_point,
+            update.last_point,
         )
-        for first_point, second_point in update.flushed_segments:
+
+        for first_point, second_point in update.processed_segments:
             self._update_directional_heatmap(
                 first_point, second_point, direction_label
-            )
-
-        if clamped_current_pos is not None:
-            self._update_directional_heatmap(
-                update.last_point, clamped_current_pos, direction_label
             )
 
     def _update_directional_heatmap(

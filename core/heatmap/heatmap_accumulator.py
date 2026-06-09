@@ -17,10 +17,11 @@ class HeatmapAccumulator:
         self.height = builder.height
         self.width = builder.width
         self.frames_count = builder.frames_count
-        if self.height is None or self.width is None or self.frames_count is None:
+        self.fps = builder.fps
+
+        if self.height is None or self.width is None or self.frames_count is None or self.fps is None:
             raise ValueError("Builder fields must be set before use.")
 
-        self.fps = builder.fps
         self.frames_processed = 0
         self.heatmap = {
             "all": np.zeros((self.height, self.width), dtype=np.float32),
@@ -34,6 +35,7 @@ class HeatmapAccumulator:
             (self.height, self.width), dtype=np.float32
         )
         self.momentum_tracker = MomentumTracker(
+            self.fps,
             builder.momentum_buffer_size,
             builder.max_lost_frames,
         )

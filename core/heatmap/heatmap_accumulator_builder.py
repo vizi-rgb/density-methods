@@ -29,7 +29,7 @@ class HeatmapAccumulatorBuilder:
         self.frames_count = frames_count
         return self
 
-    def with_fps(self, fps: int | None) -> "HeatmapAccumulatorBuilder":
+    def with_fps(self, fps: int) -> "HeatmapAccumulatorBuilder":
         self.fps = fps
         return self
 
@@ -54,6 +54,8 @@ class HeatmapAccumulatorBuilder:
             raise ValueError("width must be set before build().")
         if self.frames_count is None:
             raise ValueError("frames_count must be set before build().")
+        if self.frames_count is None:
+            raise ValueError("fps must be set before build().")
 
         from core.heatmap.heatmap_accumulator import HeatmapAccumulator
 

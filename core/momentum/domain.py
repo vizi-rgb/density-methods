@@ -14,4 +14,5 @@ class TrackUpdate:
     last_point: TrackedPoint | None
     current_point: TrackedPoint | None
     direction_label: str | None
+    speed: float | None
     processed_segments: List[Tuple[TrackedPoint, TrackedPoint]]

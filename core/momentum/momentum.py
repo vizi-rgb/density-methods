@@ -3,6 +3,7 @@ from typing import Dict, Deque, List, Tuple, Set
 
 from core.momentum.direction import DirectionUtil
 from core.momentum.domain import TrackedPoint, TrackUpdate
+from core.momentum.speed import SpeedUtil
 
 
 def _should_be_tracked(track_id: int) -> bool:
@@ -10,12 +11,14 @@ def _should_be_tracked(track_id: int) -> bool:
 
 
 class MomentumTracker:
-    def __init__(self, momentum_buffer_size: int, max_lost_frames: int = 10) -> None:
+    def __init__(self, fps: int, momentum_buffer_size: int, max_lost_frames: int = 10) -> None:
+        self.fps: int = fps
         self.momentum_buffer_size: int = momentum_buffer_size
         self.max_lost_frames: int = max_lost_frames
         self.id_tracker: Dict[int, Deque[TrackedPoint]] = dict()
         self.lost_frames_counter: Dict[int, int] = Counter()
         self.get_direction_label = DirectionUtil.get_direction_label
+        self.get_speed = SpeedUtil.get_speed_px
 
     def update(self, track_id: int, current_pos: TrackedPoint) -> TrackUpdate:
         if not _should_be_tracked(track_id):
@@ -25,6 +28,7 @@ class MomentumTracker:
                 last_point=None,
                 current_point=None,
                 direction_label=None,
+                speed=None,
                 processed_segments=[],
             )
 
@@ -42,6 +46,7 @@ class MomentumTracker:
                 last_point=None,
                 current_point=current_pos,
                 direction_label=None,
+                speed=None,
                 processed_segments=[],
             )
 
@@ -49,6 +54,7 @@ class MomentumTracker:
         last_point = history[-1]
         processed_segments: List[Tuple[TrackedPoint, TrackedPoint]] = []
         direction: str = self.get_direction_label(first_point, current_pos)
+        speed: float = self.get_speed(first_point, current_pos, self.momentum_buffer_size / self.fps)
 
         history.append(current_pos)
         if len(history) == self.momentum_buffer_size:
@@ -62,6 +68,7 @@ class MomentumTracker:
             last_point=last_point,
             current_point=current_pos,
             direction_label=direction,
+            speed=speed,
             processed_segments=processed_segments,
         )
 
@@ -85,15 +92,17 @@ class MomentumTracker:
                     self.id_tracker.pop(track_id)
                     continue
 
-                first_point, second_point = history[0], history[-1]
+                first_point, second_point, frames_cnt = history[0], history[-1], len(history)
                 flushed_segments = self.flush_momentum_buffer(track_id)
                 direction = self.get_direction_label(first_point, second_point)
+                speed = self.get_speed(first_point, second_point, frames_cnt / self.fps)
                 track_updates.append(TrackUpdate(
                     was_tracked=True,
                     first_point=first_point,
                     last_point=second_point,
                     current_point=None,
                     direction_label=direction,
+                    speed=speed,
                     processed_segments=flushed_segments,
                 ))
                 self.id_tracker.pop(track_id)

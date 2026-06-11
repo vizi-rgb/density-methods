@@ -1,25 +1,31 @@
 from __future__ import annotations
 
-import math
 import cv2
 import numpy as np
 from typing import TYPE_CHECKING
-from core.adapter.predictions_adapter import Prediction, Point
-from core.momentum.momentum import MomentumTracker, TrackedPoint, TrackUpdate
+from core.momentum.momentum import TrackedPoint, TrackUpdate
 
 if TYPE_CHECKING:
-    from core.heatmap.heatmap_accumulator_builder import HeatmapAccumulatorBuilder
+    from core.heatmap.directional.directional_heatmap_builder import (
+        DirectionalHeatmapBuilder,
+    )
 
 EPS = 0.01
 
-class HeatmapAccumulator:
-    def __init__(self, builder: "HeatmapAccumulatorBuilder"):
+
+class DirectionalHeatmap:
+    def __init__(self, builder: "DirectionalHeatmapBuilder"):
         self.height = builder.height
         self.width = builder.width
         self.frames_count = builder.frames_count
         self.fps = builder.fps
 
-        if self.height is None or self.width is None or self.frames_count is None or self.fps is None:
+        if (
+            self.height is None
+            or self.width is None
+            or self.frames_count is None
+            or self.fps is None
+        ):
             raise ValueError("Builder fields must be set before use.")
 
         self.frames_processed = 0
@@ -34,62 +40,50 @@ class HeatmapAccumulator:
         self.intermediate_heatmap = np.zeros(
             (self.height, self.width), dtype=np.float32
         )
-        self.momentum_tracker = MomentumTracker(
-            self.fps,
-            builder.momentum_buffer_size,
-            builder.max_lost_frames,
-        )
-
         if self.fps and builder.half_life_time:
             self.decay_factor = 0.5 ** (1 / (builder.half_life_time * self.fps))
         else:
             self.decay_factor = None
 
-    def get_heatmap_from_streamed_prediction(self, prediction: Prediction):
-        if self.decay_factor:
-           self._apply_decay()
-
-        self._process_prediction(prediction)
-        print(f"Returning heatmap [{self.frames_processed + 1}/{self.frames_count}]")
-        self.frames_processed += 1
-        return self.heatmap
-
-    def get_heatmap_from_predictions(self, predictions: list[Prediction]):
-        for prediction in predictions:
-            self._process_prediction(prediction)
-        return self.heatmap
-
-    def _process_prediction(self, prediction: Prediction):
-        for point in prediction.points:
-            self._update_heatmap(point)
-
-        updates = self.momentum_tracker.flush_lost_tracks_buffers(set(point.track_id for point in prediction.points))
+    def handle(self, updates: list[TrackUpdate]):
         for update in updates:
-            self._execute_track_update(update)
+            self.handle_single_update(update)
+        self.frames_processed += 1
 
-    def _update_heatmap(self, current_pos: Point):
-        clamped_current_pos = self._clamp_point_to_heatmap_point(current_pos)
-        update = self.momentum_tracker.update(
-            current_pos.track_id,
-            clamped_current_pos,
-        )
-
-        if not update.was_tracked:
-            self._update_point_heatmap(clamped_current_pos)
+    def handle_single_update(self, update: TrackUpdate):
+        if not update.was_tracked and update.current_point is not None:
+            self._update_point_heatmap(update.current_point)
             return
 
-        if update.first_point is None or update.last_point is None or update.current_point is None:
+        if (
+            update.first_point is None
+            or update.last_point is None
+            or update.current_point is None
+        ):
             raise RuntimeError("MomentumTracker returned incomplete track update.")
 
         if update.processed_segments:
-            self._execute_track_update(update)
+            self.execute_track_update(update)
 
-        self._update_directional_heatmap(
-            update.last_point, update.current_point, "all"
-        )
+        self._update_directional_heatmap(update.last_point, update.current_point, "all")
 
-    def _execute_track_update(self, update: TrackUpdate):
-        if update.first_point is None or update.last_point is None or update.direction_label is None:
+    def get_heatmap(self):
+        return self.heatmap
+
+    def apply_decay(self):
+        if self.decay_factor:
+            self._apply_decay()
+
+    def execute_track_update_batch(self, updates: list[TrackUpdate]):
+        for update in updates:
+            self.execute_track_update(update)
+
+    def execute_track_update(self, update: TrackUpdate):
+        if (
+            update.first_point is None
+            or update.last_point is None
+            or update.direction_label is None
+        ):
             raise RuntimeError("MomentumTracker returned incomplete track update.")
 
         for first_point, second_point in update.processed_segments:
@@ -116,12 +110,6 @@ class HeatmapAccumulator:
         cv2.line(self.intermediate_heatmap, p1, p2, 1, 1)
         heatmap += self.intermediate_heatmap
         cv2.line(self.intermediate_heatmap, p1, p2, 0, 1)
-
-    def _clamp_point_to_heatmap_point(self, point: Point) -> TrackedPoint:
-        return TrackedPoint(
-            x=min(max(math.floor(point.x), 0), self.width - 1),
-            y=min(max(math.floor(point.y), 0), self.height - 1),
-        )
 
     def _apply_decay(self):
         for key in self.heatmap:

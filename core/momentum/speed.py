@@ -4,7 +4,6 @@ from core.momentum.domain import TrackedPoint
 
 
 class SpeedUtil:
-
     @classmethod
     def get_speed_px(cls, p1: TrackedPoint, p2: TrackedPoint, dt: float):
         if dt == 0:

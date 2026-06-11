@@ -11,7 +11,9 @@ def _should_be_tracked(track_id: int) -> bool:
 
 
 class MomentumTracker:
-    def __init__(self, fps: int, momentum_buffer_size: int, max_lost_frames: int = 10) -> None:
+    def __init__(
+        self, fps: int, momentum_buffer_size: int, max_lost_frames: int = 10
+    ) -> None:
         self.fps: int = fps
         self.momentum_buffer_size: int = momentum_buffer_size
         self.max_lost_frames: int = max_lost_frames
@@ -19,6 +21,14 @@ class MomentumTracker:
         self.lost_frames_counter: Dict[int, int] = Counter()
         self.get_direction_label = DirectionUtil.get_direction_label
         self.get_speed = SpeedUtil.get_speed_px
+
+    def update_batch(
+        self, track_ids: list[int], current_pos_list: list[TrackedPoint]
+    ) -> List[TrackUpdate]:
+        return [
+            self.update(track_id, point)
+            for track_id, point in zip(track_ids, current_pos_list)
+        ]
 
     def update(self, track_id: int, current_pos: TrackedPoint) -> TrackUpdate:
         if not _should_be_tracked(track_id):
@@ -33,9 +43,7 @@ class MomentumTracker:
             )
 
         if not self.is_id_tracked(track_id):
-            self.id_tracker[track_id] = deque(
-                maxlen=self.momentum_buffer_size
-            )
+            self.id_tracker[track_id] = deque(maxlen=self.momentum_buffer_size)
 
         history = self.id_tracker[track_id]
         if len(history) == 0:
@@ -54,7 +62,9 @@ class MomentumTracker:
         last_point = history[-1]
         processed_segments: List[Tuple[TrackedPoint, TrackedPoint]] = []
         direction: str = self.get_direction_label(first_point, current_pos)
-        speed: float = self.get_speed(first_point, current_pos, self.momentum_buffer_size / self.fps)
+        speed: float = self.get_speed(
+            first_point, current_pos, self.momentum_buffer_size / self.fps
+        )
 
         history.append(current_pos)
         if len(history) == self.momentum_buffer_size:
@@ -92,19 +102,25 @@ class MomentumTracker:
                     self.id_tracker.pop(track_id)
                     continue
 
-                first_point, second_point, frames_cnt = history[0], history[-1], len(history)
+                first_point, second_point, frames_cnt = (
+                    history[0],
+                    history[-1],
+                    len(history),
+                )
                 flushed_segments = self.flush_momentum_buffer(track_id)
                 direction = self.get_direction_label(first_point, second_point)
                 speed = self.get_speed(first_point, second_point, frames_cnt / self.fps)
-                track_updates.append(TrackUpdate(
-                    was_tracked=True,
-                    first_point=first_point,
-                    last_point=second_point,
-                    current_point=None,
-                    direction_label=direction,
-                    speed=speed,
-                    processed_segments=flushed_segments,
-                ))
+                track_updates.append(
+                    TrackUpdate(
+                        was_tracked=True,
+                        first_point=first_point,
+                        last_point=second_point,
+                        current_point=None,
+                        direction_label=direction,
+                        speed=speed,
+                        processed_segments=flushed_segments,
+                    )
+                )
                 self.id_tracker.pop(track_id)
 
         return track_updates
@@ -113,8 +129,7 @@ class MomentumTracker:
         return _should_be_tracked(track_id) and track_id in self.id_tracker
 
     def flush_momentum_buffer(
-        self,
-        track_id: int
+        self, track_id: int
     ) -> List[Tuple[TrackedPoint, TrackedPoint]]:
         history = self.id_tracker[track_id]
         if len(history) < 1:
@@ -130,8 +145,7 @@ class MomentumTracker:
         return [(first, first)] if len(flushed_segments) == 0 else flushed_segments
 
     def _peek_momentum_buffer(
-            self,
-            track_id: int
+        self, track_id: int
     ) -> List[Tuple[TrackedPoint, TrackedPoint]]:
         history = list(self.id_tracker[track_id])
         if len(history) < 1:

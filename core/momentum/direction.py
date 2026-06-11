@@ -3,12 +3,14 @@ from enum import Enum
 
 from core.momentum.domain import TrackedPoint
 
+
 class Direction(Enum):
     UP = "up"
     DOWN = "down"
     LEFT = "left"
     RIGHT = "right"
     STATIC = "static"
+
 
 class DirectionUtil:
     STATIC_THRESHOLD = 5

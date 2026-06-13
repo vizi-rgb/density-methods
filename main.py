@@ -12,6 +12,7 @@ from core.helpers import DataSourceInfoReader
 from core.helpers.point import PointUtil
 from models.yolo.yolo import YOLOModel
 from project_root import PROJECT_ROOT
+import time
 
 # path = "data/datasets/mall_dataset/frames/"
 path = "data/datasets/yt/walking_people.mp4"
@@ -27,12 +28,13 @@ def _resolve_path(image_path: str) -> Path:
 to_save = {
     "down": Path("out/down"),
     "up": Path("out/up"),
-    # "static": Path("out/static"),
-    # "right": Path("out/right"),
-    # "left": Path("out/left"),
-    "speed": Path("out/speed"),
+    "static": Path("out/static"),
+    "right": Path("out/right"),
+    "left": Path("out/left"),
     "all": Path("out/all"),
 }
+
+to_save_speed = Path("out/speed")
 
 
 def main() -> None:
@@ -77,6 +79,7 @@ def main() -> None:
     for direction, save_path in to_save.items():
         save_path.mkdir(parents=True, exist_ok=True)
 
+    start = time.perf_counter()
     for num, prediction in enumerate(raw_predictions):
         processed_prediction = predictions_adapter.to_predictions(prediction)
 
@@ -102,7 +105,7 @@ def main() -> None:
         hv.draw(
             speed_heatmap.get_heatmap(),
             processed_prediction.image,
-            save_path=to_save["speed"] / f"{num}.png",
+            save_path=to_save_speed / f"{num}.png",
         )
 
         # for direction, path_base in to_save.items():
@@ -111,6 +114,9 @@ def main() -> None:
         #         processed_prediction.image,
         #         save_path=path_base / f"{num}.png",
         #     )
+    end = time.perf_counter()
+    elapsed = end - start
+    print(f"Time taken: {int(elapsed) // 60} minutes and {int(elapsed) % 60} seconds ({elapsed:.2f}s total {metadata.frames // elapsed} fps)")
 
 
 if __name__ == "__main__":

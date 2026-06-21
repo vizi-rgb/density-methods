@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+
+from core.heatmap.speed.speed_filter import SpeedFilter
 
 if TYPE_CHECKING:
     from core.heatmap.speed.speed_heatmap import SpeedHeatmap
@@ -16,8 +18,7 @@ class SpeedHeatmapBuilder:
     half_life_time: int | None = None
     momentum_buffer_size: int = 1
     max_lost_frames: int = 10
-    speed_min: float = 0.0
-    speed_max: float = float("inf")
+    speed_filters: list[SpeedFilter] = field(default_factory=list)
 
     def with_height(self, height: int) -> "SpeedHeatmapBuilder":
         self.height = height
@@ -51,12 +52,8 @@ class SpeedHeatmapBuilder:
         self.half_life_time = half_life_time_in_seconds
         return self
 
-    def with_speed_min(self, speed_min: float) -> "SpeedHeatmapBuilder":
-        self.speed_min = speed_min
-        return self
-
-    def with_speed_max(self, speed_max: float) -> "SpeedHeatmapBuilder":
-        self.speed_max = speed_max
+    def with_speed_filter(self, speed_filter: SpeedFilter) -> "SpeedHeatmapBuilder":
+        self.speed_filters.append(speed_filter)
         return self
 
     def build(self) -> "SpeedHeatmap":

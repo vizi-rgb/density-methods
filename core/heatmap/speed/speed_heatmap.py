@@ -47,7 +47,7 @@ class SpeedHeatmap:
         self.frames_processed += 1
 
     def handle_single_update(self, update: TrackUpdate):
-        if not self._speed_in_range(update.speed):
+        if not self._speed_in_range(update.speed_px_per_s):
             return
 
         if not update.was_tracked and update.current_point is not None:

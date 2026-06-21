@@ -7,6 +7,8 @@ from core.heatmap.directional.directional_heatmap_builder import (
     DirectionalHeatmapBuilder,
 )
 from core.heatmap.visualizer.heatmap_visualizer import HeatmapVisualizer
+from core.helpers.camera_info import CameraInfo
+from core.momentum.camera_to_world_mapper import CameraToWorldMapper
 from core.momentum.momentum import MomentumTracker
 from core.helpers import DataSourceInfoReader
 from core.helpers.point import PointUtil
@@ -49,6 +51,7 @@ def main() -> None:
     assert metadata.fps is not None
 
     tracker_config = ConfigLoader.load_tracker_config(TrackerConfig.BOTSORT)
+    max_lost_frames = tracker_config.get("track_buffer", 10)
     directional_heatmap = (
         DirectionalHeatmapBuilder()
         .with_height(metadata.height)
@@ -56,7 +59,7 @@ def main() -> None:
         .with_frames(metadata.frames)
         .with_fps(metadata.fps)
         .with_momentum_buffer_size(15)
-        .with_max_lost_frames(tracker_config.get("track_buffer", 10))
+        .with_max_lost_frames(max_lost_frames)
         .build()
     )
 
@@ -68,12 +71,13 @@ def main() -> None:
         .with_fps(metadata.fps)
         .with_momentum_buffer_size(15)
         .with_half_life_time(4)
-        .with_max_lost_frames(tracker_config.get("track_buffer", 10))
+        .with_max_lost_frames(max_lost_frames)
         .with_speed_max(90)
         .build()
     )
 
-    momentum = MomentumTracker(metadata.fps, 15, tracker_config.get("track_buffer", 10))
+    mapper = CameraToWorldMapper(CameraInfo().get_transformation_matrix())
+    momentum = MomentumTracker(metadata.fps, 15, max_lost_frames, mapper)
     hv = HeatmapVisualizer(fixed_max=3, alpha=0.5, sigma=25)
 
     for direction, save_path in to_save.items():

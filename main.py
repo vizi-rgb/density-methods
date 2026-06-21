@@ -6,6 +6,7 @@ from core.heatmap import SpeedHeatmapBuilder
 from core.heatmap.directional.directional_heatmap_builder import (
     DirectionalHeatmapBuilder,
 )
+from core.heatmap.speed.speed_filter import SpeedFilter
 from core.heatmap.visualizer.heatmap_visualizer import HeatmapVisualizer
 from core.helpers.camera_info import CameraInfo
 from core.momentum.camera_to_world_mapper import CameraToWorldMapper
@@ -70,9 +71,9 @@ def main() -> None:
         .with_frames(metadata.frames)
         .with_fps(metadata.fps)
         .with_momentum_buffer_size(15)
-        .with_half_life_time(4)
         .with_max_lost_frames(max_lost_frames)
-        .with_speed_max(90)
+        .with_speed_filter(SpeedFilter(name="slow", max_speed=2, get_speed_function=lambda x: x.speed_km_per_h))
+        .with_speed_filter(SpeedFilter(name="fast", min_speed=3.5, get_speed_function=lambda x: x.speed_km_per_h))
         .build()
     )
 
@@ -80,8 +81,8 @@ def main() -> None:
     momentum = MomentumTracker(metadata.fps, 15, max_lost_frames, mapper)
     hv = HeatmapVisualizer(fixed_max=3, alpha=0.5, sigma=25)
 
-    for direction, save_path in to_save.items():
-        save_path.mkdir(parents=True, exist_ok=True)
+    # for direction, save_path in to_save.items():
+    #     save_path.mkdir(parents=True, exist_ok=True)
 
     start = time.perf_counter()
     for num, prediction in enumerate(raw_predictions):
@@ -107,7 +108,7 @@ def main() -> None:
         speed_heatmap.execute_track_update_batch(lost_tracks_updates)
 
         hv.draw(
-            speed_heatmap.get_heatmap(),
+            speed_heatmap.get_heatmap()["fast"],
             processed_prediction.image,
             save_path=to_save_speed / f"{num}.png",
         )

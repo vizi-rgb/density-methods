@@ -6,7 +6,7 @@ from core.momentum.domain import TrackedPoint
 
 class PointUtil:
     @staticmethod
-    def clamp_points_to_heatmap_points(points: list[Point], width: int, height: int):
+    def clamp_points_to_heatmap_points(points: list[Point], width: int, height: int) -> list[TrackedPoint]:
         return [
             PointUtil.clamp_point_to_heatmap_point(point, width, height)
             for point in points

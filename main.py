@@ -6,6 +6,7 @@ from core.heatmap import SpeedHeatmapBuilder
 from core.heatmap.directional.directional_heatmap_builder import (
     DirectionalHeatmapBuilder,
 )
+from core.heatmap.logic.logic import HeatmapLogic
 from core.heatmap.speed.speed_filter import SpeedFilter
 from core.heatmap.visualizer.heatmap_visualizer import HeatmapVisualizer
 from core.helpers.camera_info import CameraInfo
@@ -108,7 +109,7 @@ def main() -> None:
         speed_heatmap.execute_track_update_batch(lost_tracks_updates)
 
         hv.draw(
-            speed_heatmap.get_heatmap()["fast"],
+            HeatmapLogic(speed_heatmap.get_heatmap()["fast"]).and_(HeatmapLogic(directional_heatmap.get_heatmap()["up"])).result(),
             processed_prediction.image,
             save_path=to_save_speed / f"{num}.png",
         )

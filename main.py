@@ -3,6 +3,7 @@ from pathlib import Path
 from config.config_loader import ConfigLoader, TrackerConfig
 from core.adapter.predictions_adapter_factory import StreamedPredictionsAdapterFactory
 from core.heatmap import SpeedHeatmapBuilder
+from core.heatmap.clusters.cluster_heatmap_builder import ClusterHeatmapBuilder
 from core.heatmap.directional.directional_heatmap_builder import (
     DirectionalHeatmapBuilder,
 )
@@ -78,9 +79,20 @@ def main() -> None:
         .build()
     )
 
+    cluster_heatmap = (
+        ClusterHeatmapBuilder()
+        .with_height(metadata.height)
+        .with_width(metadata.width)
+        .with_frames(metadata.frames)
+        .with_fps(metadata.fps)
+        .with_momentum_buffer_size(15)
+        .with_max_lost_frames(max_lost_frames)
+        .build()
+    )
+
     mapper = CameraToWorldMapper(CameraInfo().get_transformation_matrix())
     momentum = MomentumTracker(metadata.fps, 15, max_lost_frames, mapper)
-    hv = HeatmapVisualizer(fixed_max=3, alpha=0.5, sigma=25)
+    hv = HeatmapVisualizer(fixed_max=0.5, alpha=0.5, sigma=25)
 
     # for direction, save_path in to_save.items():
     #     save_path.mkdir(parents=True, exist_ok=True)
@@ -101,6 +113,7 @@ def main() -> None:
 
         directional_heatmap.handle(updates)
         speed_heatmap.handle(updates)
+        cluster_heatmap.handle(updates)
 
         lost_tracks_updates = momentum.flush_lost_tracks_buffers(
             set(point.track_id for point in processed_prediction.points)
@@ -108,8 +121,10 @@ def main() -> None:
         directional_heatmap.execute_track_update_batch(lost_tracks_updates)
         speed_heatmap.execute_track_update_batch(lost_tracks_updates)
 
+
+        heatmap_to_draw = HeatmapLogic(cluster_heatmap.get_heatmap()["3"]).and_(directional_heatmap.get_heatmap()["static"]).result()
         hv.draw(
-            HeatmapLogic(speed_heatmap.get_heatmap()["fast"]).and_(HeatmapLogic(directional_heatmap.get_heatmap()["up"])).result(),
+            heatmap_to_draw,
             processed_prediction.image,
             save_path=to_save_speed / f"{num}.png",
         )

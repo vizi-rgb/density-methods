@@ -16,6 +16,7 @@ class TrackUpdate:
     direction_label: str | None
     speed_px_per_s: float | None
     speed_km_per_h: float | None
+    track_id: int | None
 
     # emits when particular segments are processed, so when an appropriate update should happen in handlers
     # this is to ensure that noise does not affect the evaluated metrics

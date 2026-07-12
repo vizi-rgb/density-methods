@@ -52,6 +52,7 @@ class MomentumTracker:
                 speed_px_per_s=None,
                 speed_km_per_h=None,
                 processed_segments=[],
+                track_id=track_id,
             )
 
         if not self.is_id_tracked(track_id):
@@ -70,6 +71,7 @@ class MomentumTracker:
                 speed_px_per_s=None,
                 speed_km_per_h=None,
                 processed_segments=[],
+                track_id=track_id,
             )
 
         first_point = history[0]
@@ -98,6 +100,7 @@ class MomentumTracker:
             speed_px_per_s=speed,
             speed_km_per_h=real_speed,
             processed_segments=processed_segments,
+            track_id=track_id,
         )
 
     def flush_lost_tracks_buffers(self, current_track_ids: Set[int]):
@@ -143,6 +146,7 @@ class MomentumTracker:
                         speed_px_per_s=speed,
                         speed_km_per_h=real_speed,
                         processed_segments=flushed_segments,
+                        track_id=track_id,
                     )
                 )
                 self.id_pos_tracker.pop(track_id)

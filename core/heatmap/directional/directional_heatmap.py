@@ -24,7 +24,6 @@ class DirectionalHeatmap:
             self.height is None
             or self.width is None
             or self.frames_count is None
-            or self.fps is None
         ):
             raise ValueError("Builder fields must be set before use.")
 

@@ -2,7 +2,8 @@ from pathlib import Path
 
 from config.config_loader import ConfigLoader, TrackerConfig
 from core.adapter.predictions_adapter_factory import StreamedPredictionsAdapterFactory
-from core.heatmap import SpeedHeatmapBuilder
+from core.heatmap import SpeedHeatmapBuilder, RoiHeatmapBuilder, RoiHeatmapVisualizer, TripwireHeatmapBuilder, \
+    TripwireHeatmapVisualizer
 from core.heatmap.clusters.cluster_heatmap_builder import ClusterHeatmapBuilder
 from core.heatmap.directional.directional_heatmap_builder import (
     DirectionalHeatmapBuilder,
@@ -31,15 +32,33 @@ def _resolve_path(image_path: str) -> Path:
 
 
 to_save = {
-    "down": Path("out/down"),
-    "up": Path("out/up"),
-    "static": Path("out/static"),
-    "right": Path("out/right"),
-    "left": Path("out/left"),
-    "all": Path("out/all"),
+    "directional": {
+        "down": Path("out/down"),
+        "up": Path("out/up"),
+        "static": Path("out/static"),
+        "right": Path("out/right"),
+        "left": Path("out/left"),
+        "all": Path("out/all"),
+    },
+    "speed": {
+        "fast": Path("out/fast"),
+        "slow": Path("out/slow"),
+    },
+    "cluster": {
+        "2": Path("out/two-people"),
+        "3": Path("out/three-people"),
+    },
+    "roi": {
+       "inside->outside": Path("out/inside->outside"),
+        "outside->inside": Path("out/outside->inside"),
+    },
+    "tripwire": {
+        "inside->outside": Path("out/tripwire-inside->outside"),
+    },
+    "combined": {
+        "combined": Path("out/combined"),
+    }
 }
-
-to_save_speed = Path("out/speed")
 
 
 def main() -> None:
@@ -90,12 +109,35 @@ def main() -> None:
         .build()
     )
 
+    polygon = [(250, 400), (250, 700), (600, 700), (600, 400)]
+    roi_heatmap = (
+        RoiHeatmapBuilder()
+        .with_height(metadata.height)
+        .with_width(metadata.width)
+        .with_frames(metadata.frames)
+        .with_polygon(polygon)
+        .build()
+    )
+
+    tripwire_heatmap = (
+        TripwireHeatmapBuilder()
+        .with_height(metadata.height)
+        .with_width(metadata.width)
+        .with_frames(metadata.frames)
+        .with_tripwire((412, 370), (1350, 400), (750, 750))
+        .build()
+    )
+
     mapper = CameraToWorldMapper(CameraInfo().get_transformation_matrix())
     momentum = MomentumTracker(metadata.fps, 15, max_lost_frames, mapper)
-    hv = HeatmapVisualizer(fixed_max=0.5, alpha=0.5, sigma=25)
+    heatmap_visualizer = HeatmapVisualizer(fixed_max=3, alpha=0.5, sigma=25)
 
-    # for direction, save_path in to_save.items():
-    #     save_path.mkdir(parents=True, exist_ok=True)
+    roi_visualizer = RoiHeatmapVisualizer(heatmap_visualizer, roi_heatmap.get_polygon())
+    tripwire_visualizer = TripwireHeatmapVisualizer(heatmap_visualizer, *tripwire_heatmap.get_tripwire())
+
+    for category, save_paths in to_save.items():
+        for direction, save_path in save_paths.items():
+            save_path.mkdir(parents=True, exist_ok=True)
 
     start = time.perf_counter()
     for num, prediction in enumerate(raw_predictions):
@@ -114,6 +156,8 @@ def main() -> None:
         directional_heatmap.handle(updates)
         speed_heatmap.handle(updates)
         cluster_heatmap.handle(updates)
+        roi_heatmap.handle(updates)
+        tripwire_heatmap.handle(updates)
 
         lost_tracks_updates = momentum.flush_lost_tracks_buffers(
             set(point.track_id for point in processed_prediction.points)
@@ -122,19 +166,55 @@ def main() -> None:
         speed_heatmap.execute_track_update_batch(lost_tracks_updates)
 
 
-        heatmap_to_draw = HeatmapLogic(cluster_heatmap.get_heatmap()["3"]).and_(directional_heatmap.get_heatmap()["static"]).result()
-        hv.draw(
-            heatmap_to_draw,
-            processed_prediction.image,
-            save_path=to_save_speed / f"{num}.png",
+        combined_heatmap = (
+            HeatmapLogic(directional_heatmap.get_heatmap()["up"])
+            .and_(speed_heatmap.get_heatmap()["fast"])
+            .and_(tripwire_heatmap.get_heatmap()["inside"])
+            .result()
         )
 
-        # for direction, path_base in to_save.items():
-        #     hv.draw(
-        #         directional_heatmap.get_heatmap()[direction],
-        #         processed_prediction.image,
-        #         save_path=path_base / f"{num}.png",
-        #     )
+
+        for direction, path_base in to_save["directional"].items():
+            heatmap_visualizer.draw(
+                directional_heatmap.get_heatmap()[direction],
+                processed_prediction.image,
+                save_path=path_base / f"{num}.png",
+            )
+
+        for speed, path_base in to_save["speed"].items():
+            heatmap_visualizer.draw(
+                speed_heatmap.get_heatmap()[speed],
+                processed_prediction.image,
+                save_path=path_base / f"{num}.png",
+            )
+
+        for cluster_size, path_base in to_save["cluster"].items():
+            heatmap_visualizer.draw(
+                cluster_heatmap.get_heatmap()[cluster_size],
+                processed_prediction.image,
+                save_path=path_base / f"{num}.png",
+            )
+
+        for roi_motion, path_base in to_save["roi"].items():
+            roi_visualizer.draw(
+                roi_heatmap.get_heatmap()[roi_motion],
+                processed_prediction.image,
+                save_path=path_base / f"{num}.png",
+            )
+
+        for tripwire_motion, path_base in to_save["tripwire"].items():
+            tripwire_visualizer.draw(
+                tripwire_heatmap.get_heatmap()[tripwire_motion],
+                processed_prediction.image,
+                save_path=path_base / f"{num}.png",
+            )
+
+        tripwire_visualizer.draw(
+            combined_heatmap,
+            processed_prediction.image,
+            save_path=to_save["combined"]["combined"] / f"{num}.png",
+        )
+
     end = time.perf_counter()
     elapsed = end - start
     print(f"Time taken: {int(elapsed) // 60} minutes and {int(elapsed) % 60} seconds ({elapsed:.2f}s total {metadata.frames // elapsed} fps)")

@@ -1,0 +1,27 @@
+yolo:
+  weights: data/weights/yolo26n.pt
+  classes: [0]
+  show: true
+  logging: true
+  conf: 0.25
+  iou: 0.7
+  device: cpu
+
+yolo-crowd:
+  weights: data/weights/yolo-crowd.pt
+  img_size: 640
+  classes: [0]
+  show: false
+  conf: 0.25
+  iou: 0.45
+  device: cpu
+  save_txt: false
+  save_conf: false
+  nosave: false
+  agnostic_nms: false
+  augment: false
+  project: runs/detect
+  name: exp
+  exist_ok: false
+  line_thickness: 3
+  count_overlay: false

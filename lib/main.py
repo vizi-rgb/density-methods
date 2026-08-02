@@ -21,7 +21,7 @@ from project_root import PROJECT_ROOT
 import time
 
 # path = "data/datasets/mall_dataset/frames/"
-path = "data/datasets/yt/walking_people.mp4"
+path = PROJECT_ROOT / "data/datasets/yt/walking_people.mp4"
 
 
 def _resolve_path(image_path: str) -> Path:

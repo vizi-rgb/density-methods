@@ -10,8 +10,8 @@ See also: [`api-integration.md`](./api-integration.md) (backend contract, curren
 | `hls.js` | ✅ zainstalowany (`hls.js 1.6.x` z wbudowanymi typami) |
 | `src/api/`, `src/components/`, `src/utils/`, `src/types/` | ✅ zaimplementowane (upload → SSE → tabbed HLS playback, zgodnie z tym dokumentem) |
 | Backend (`heatmaps-backend`) | ⚠️ tylko dokumentacja (`heatmaps-backend/docs/`), brak działającego kodu/endpointów |
-| Selekcja `heatmap_types` przy uploadzie | ❌ brak — patrz `api-integration.md` § "Current implementation gaps" |
-| Recovery stanu po reloadzie strony | ❌ brak — patrz `api-integration.md` § "Current implementation gaps" |
+| Selekcja `heatmap_types` przy uploadzie | ✅ zaimplementowane (`FileUpload.tsx`) |
+| Recovery stanu po reloadzie strony | ✅ zaimplementowane (`App.tsx`, `GET /api/status/{job_id}`) |
 
 ---
 
@@ -111,7 +111,7 @@ heatmaps-frontend/
 | `READY_TO_PLAY` | SSE `status == "completed"` | `VideoPlayerGrid` (N odtwarzaczy) |
 | `ERROR` | Dowolny błąd (upload/SSE/HLS) | Komunikat błędu + przycisk reset |
 
-> Brakująca ścieżka (patrz `api-integration.md`): po odświeżeniu strony w trakcie `PROCESSING`, aplikacja dziś wraca do `IDLE` zamiast odtworzyć stan przez `GET /api/status/{job_id}`.
+> Po odświeżeniu strony w trakcie `PROCESSING`/`READY_TO_PLAY`, aplikacja odtwarza stan przez `GET /api/status/{job_id}` (persystowane `job_id` w `sessionStorage`) zamiast wracać do `IDLE`.
 
 ---
 
@@ -137,7 +137,7 @@ Patrz [`api-integration.md`](./api-integration.md) dla dokładnych żądań/odpo
 
 ### Etap 4 — Komponenty UI ✅
 
-- **`FileUpload.tsx`** — `<input type="file" accept="video/*">` + button, callback `onUpload(file)`. **Brakuje:** selekcji `heatmap_types` (patrz gaps w `api-integration.md`).
+- **`FileUpload.tsx`** — `<input type="file" accept="video/*">` + checkbox group dla `heatmap_types` (min. 1 wybór wymagany) + button, callback `onUpload(file, heatmapTypes)`.
 - **`JobStatus.tsx`** — pasek postępu z `progress: number` (0–100) + tekst statusu
 - **`VideoPlayer.tsx`** — pojedynczy `<video>` z `ref` + inicjalizacja hls.js przez `hlsLoader`; przyjmuje `{ label, manifestUrl }`
 - **`VideoPlayerGrid.tsx`** — renderuje `outputs.map(o => <VideoPlayer>)` w układzie tabs lub grid (pojedynczy output = bez tabs); niszczy wszystkie instancje `Hls` przy unmount
@@ -148,6 +148,4 @@ Patrz [`api-integration.md`](./api-integration.md) dla dokładnych żądań/odpo
 
 ### Etap 6 — Orkiestracja w `App.tsx` ✅
 
-`useState` dla `appState`, `jobId`, `progress`, `outputs`, `error`. Przepływ: `uploadVideo()` → `openSSEStream()` → na `completed`: zamknięcie SSE, zapis `outputs`, przejście do `READY_TO_PLAY`. `useEffect` niszczy `EventSource` przy unmount/reset.
-
-**Następne kroki implementacyjne** (nie zrobione jeszcze): patrz `api-integration.md` § "Current implementation gaps" — selekcja `heatmap_types` i recovery po reloadzie.
+`useState` dla `appState`, `progress`, `outputs`, `error`. Przepływ: `uploadVideo(file, heatmapTypes)` → persystencja `job_id` w `sessionStorage` → `connectStream()` (`openSSEStream()`) → na `completed`: zamknięcie SSE, zapis `outputs`, przejście do `READY_TO_PLAY`. Dodatkowy `useEffect` na mount odczytuje persystowane `job_id` i wywołuje `GET /api/status/{job_id}` (`getJobStatus`), odtwarzając stan (i ponownie łącząc SSE, jeśli job nie jest jeszcze zakończony). `useEffect` niszczy `EventSource` przy unmount/reset.

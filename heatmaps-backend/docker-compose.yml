@@ -1,0 +1,39 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  api:
+    build:
+      context: ..
+      dockerfile: heatmaps-backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: '["http://localhost:5173"]'
+    volumes:
+      - ./data:/workspace/heatmaps-backend/data
+    depends_on:
+      - redis
+
+  worker:
+    build:
+      context: ..
+      dockerfile: heatmaps-backend/Dockerfile
+    # SimpleWorker: no forking. Also matches this project's documented v1
+    # design (single sequential worker, no concurrent job processing) and
+    # avoids fork-related crashes some ML libraries trigger on process fork.
+    command: ["rq", "worker", "--worker-class", "rq.worker.SimpleWorker", "video-processing"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./data:/workspace/heatmaps-backend/data
+    depends_on:
+      - redis
+
+volumes:
+  redis-data:

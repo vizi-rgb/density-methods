@@ -16,3 +16,15 @@ dependencies = [
     "tqdm>=4.67.3",
     "ultralytics>=8.4.37",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# core/config/models use bare absolute imports (e.g. `from core.heatmap...`,
+# `from config.config_loader import ...`, `from project_root import PROJECT_ROOT`),
+# not a `density_methods` namespace package, so they must be exposed as their
+# own top-level importable names rather than nested under one package.
+[tool.hatch.build.targets.wheel]
+packages = ["core", "config", "models"]
+include = ["project_root.py"]

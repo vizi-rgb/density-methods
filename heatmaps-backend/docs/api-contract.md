@@ -92,7 +92,7 @@ data: {"status": "failed", "error": "unsupported codec in source video"}
 
 Liveness/readiness probe. Checks actual Redis connectivity (not a hardcoded response).
 
-- `200` — Redis reachable, service healthy.
+- `200` — Redis reachable: `{"status": "ok", "workers_online": <int>, "queued_jobs": <int>}`. `workers_online` is the number of RQ workers currently registered on the `video-processing` queue; `queued_jobs` is jobs waiting to be picked up (not counting ones already `processing`). `workers_online == 0 && queued_jobs > 0` means uploads are accepted but nothing will ever process them — the direct diagnosis for "upload succeeded but progress is stuck at 0%".
 - `503` — Redis unreachable or other dependency failure; body includes `{"error": {...}}` with the failing dependency named.
 
 ## Static media

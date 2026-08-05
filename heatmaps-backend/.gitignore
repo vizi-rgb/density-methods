@@ -8,5 +8,5 @@ __pycache__/
 .env.local
 dump.rdb
 
-data/uploads/
+data/videos/
 data/jobs/

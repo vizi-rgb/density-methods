@@ -10,18 +10,18 @@ _SETTINGS = Settings()
 _MAX_LOST_FRAMES = 10
 
 
-def test_directional_track_draws_into_the_all_bucket() -> None:
-    track = _DirectionalTrack(_METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+def test_directional_track_draws_into_the_requested_direction_bucket() -> None:
+    track = _DirectionalTrack("right", _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
     update = TrackUpdate(
         was_tracked=True,
         first_point=TrackedPoint(0, 0),
         last_point=TrackedPoint(1, 1),
         current_point=TrackedPoint(2, 2),
-        direction_label=None,
+        direction_label="right",
         speed_px_per_s=None,
         speed_km_per_h=None,
         track_id=1,
-        processed_segments=[],
+        processed_segments=[(TrackedPoint(0, 0), TrackedPoint(2, 2))],
     )
 
     track.handle([update])
@@ -31,11 +31,32 @@ def test_directional_track_draws_into_the_all_bucket() -> None:
     assert frame.sum() > 0
 
 
+def test_directional_track_only_populates_requested_bucket() -> None:
+    # A "down" update shouldn't show up in the "up" track's frame.
+    track = _DirectionalTrack("up", _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+    update = TrackUpdate(
+        was_tracked=True,
+        first_point=TrackedPoint(0, 0),
+        last_point=TrackedPoint(1, 1),
+        current_point=TrackedPoint(2, 2),
+        direction_label="down",
+        speed_px_per_s=None,
+        speed_km_per_h=None,
+        track_id=1,
+        processed_segments=[(TrackedPoint(0, 0), TrackedPoint(2, 2))],
+    )
+
+    track.handle([update])
+    frame = track.frame()
+
+    assert frame.sum() == 0
+
+
 def test_speed_track_uses_km_per_h_from_camera_calibration() -> None:
     # pipeline.py always builds a CameraToWorldMapper from CameraInfo's
     # transformation matrix (product decision), so speed_km_per_h is
     # populated for real predictions — the speed track keys off it.
-    track = _SpeedTrack(_METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+    track = _SpeedTrack(None, None, _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
     update = TrackUpdate(
         was_tracked=True,
         first_point=TrackedPoint(0, 0),
@@ -55,8 +76,28 @@ def test_speed_track_uses_km_per_h_from_camera_calibration() -> None:
     assert frame.sum() > 0
 
 
-def test_cluster_track_frame_is_zero_when_no_clusters_formed() -> None:
-    track = _ClusterTrack(_METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+def test_speed_track_respects_min_max_bounds() -> None:
+    track = _SpeedTrack(10.0, 20.0, _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+    too_slow = TrackUpdate(
+        was_tracked=True,
+        first_point=TrackedPoint(0, 0),
+        last_point=TrackedPoint(0, 0),
+        current_point=TrackedPoint(3, 3),
+        direction_label="right",
+        speed_px_per_s=1.0,
+        speed_km_per_h=1.0,
+        track_id=1,
+        processed_segments=[(TrackedPoint(0, 0), TrackedPoint(3, 3))],
+    )
+
+    track.handle([too_slow])
+    frame = track.frame()
+
+    assert frame.sum() == 0
+
+
+def test_cluster_track_frame_is_zero_when_requested_size_never_occurs() -> None:
+    track = _ClusterTrack(5, _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
 
     frame = track.frame()
 
@@ -64,11 +105,9 @@ def test_cluster_track_frame_is_zero_when_no_clusters_formed() -> None:
     assert np.array_equal(frame, np.zeros((100, 100), dtype=np.float32))
 
 
-def test_cluster_track_sums_activity_across_all_dynamic_cluster_sizes() -> None:
-    # Cluster sizes are dynamic dict keys assigned by lib's DBSCAN clustering
-    # (one bucket per distinct cluster size observed) — frame() must sum
-    # across whatever buckets exist rather than assuming a fixed key.
-    track = _ClusterTrack(_METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+def test_cluster_track_renders_only_the_requested_group_size() -> None:
+    # Two nearby points form a cluster of exactly size 2 — a track asking
+    # for size 3 should stay empty even though *a* cluster formed.
     close_pair = [
         TrackUpdate(
             was_tracked=True,
@@ -84,8 +123,10 @@ def test_cluster_track_sums_activity_across_all_dynamic_cluster_sizes() -> None:
         for track_id in (1, 2)
     ]
 
-    track.handle(close_pair)
-    frame = track.frame()
+    track_for_2 = _ClusterTrack(2, _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+    track_for_2.handle(close_pair)
+    assert track_for_2.frame().sum() > 0
 
-    assert frame.shape == (100, 100)
-    assert frame.sum() > 0
+    track_for_3 = _ClusterTrack(3, _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+    track_for_3.handle(close_pair)
+    assert track_for_3.frame().sum() == 0

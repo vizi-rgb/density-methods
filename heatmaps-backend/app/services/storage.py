@@ -6,29 +6,51 @@ from app.config import Settings
 MEDIA_MOUNT_PATH = "/media"
 
 
-def new_job_id() -> str:
+def new_id() -> str:
     return str(uuid4())
 
 
 def ensure_base_dirs(settings: Settings) -> None:
-    settings.uploads_dir.mkdir(parents=True, exist_ok=True)
+    settings.videos_dir.mkdir(parents=True, exist_ok=True)
     settings.jobs_dir.mkdir(parents=True, exist_ok=True)
 
 
-def upload_path(settings: Settings, job_id: str, suffix: str) -> Path:
-    """Path for the uploaded source video. `suffix` includes the leading dot."""
-    job_dir = settings.uploads_dir / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-    return job_dir / f"source{suffix}"
+def staging_video_path(settings: Settings, video_id: str, suffix: str) -> Path:
+    """Temporary write target while streaming an upload to disk, before it's
+    moved into its final location. `suffix` includes the leading dot."""
+    staging_dir = settings.videos_dir / "_staging"
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    return staging_dir / f"{video_id}{suffix}"
 
 
-def job_output_dir(settings: Settings, job_id: str, heatmap_type: str) -> Path:
-    """Directory holding one heatmap type's HLS output — mounted verbatim at
-    /media/{job_id}/{heatmap_type}/ so this layout must match the URL layout."""
-    output_dir = settings.jobs_dir / job_id / heatmap_type
+def video_dir(settings: Settings, video_id: str) -> Path:
+    return settings.videos_dir / video_id
+
+
+def finalize_video_path(settings: Settings, video_id: str, suffix: str) -> Path:
+    """Final path for an uploaded source video. `suffix` includes the leading dot."""
+    target_dir = video_dir(settings, video_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    return target_dir / f"source{suffix}"
+
+
+def video_source_path(settings: Settings, video_id: str) -> Path | None:
+    """Locates the previously uploaded source video for `video_id`, if any —
+    used to 404 unknown videos and to hand the pipeline a real file path."""
+    matches = sorted(video_dir(settings, video_id).glob("source.*"))
+    return matches[0] if matches else None
+
+
+def video_url(base_url: str, video_id: str, source_path: Path) -> str:
+    return f"{base_url.rstrip('/')}{MEDIA_MOUNT_PATH}/videos/{video_id}/{source_path.name}"
+
+
+def job_output_path(settings: Settings, job_id: str) -> Path:
+    """Single MP4 output file for one heatmap job."""
+    output_dir = settings.jobs_dir / job_id
     output_dir.mkdir(parents=True, exist_ok=True)
-    return output_dir
+    return output_dir / "output.mp4"
 
 
-def manifest_url(base_url: str, job_id: str, heatmap_type: str) -> str:
-    return f"{base_url.rstrip('/')}{MEDIA_MOUNT_PATH}/{job_id}/{heatmap_type}/stream.m3u8"
+def job_output_url(base_url: str, job_id: str) -> str:
+    return f"{base_url.rstrip('/')}{MEDIA_MOUNT_PATH}/jobs/{job_id}/output.mp4"

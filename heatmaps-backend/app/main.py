@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.errors import ApiError, api_error_handler
-from app.api.routes import health, status, upload
+from app.api.routes import health, heatmaps, videos
 from app.api.schemas import ErrorDetail, ErrorResponse
 from app.config import get_settings
 from app.services.storage import MEDIA_MOUNT_PATH, ensure_base_dirs
@@ -43,13 +43,13 @@ def create_app() -> FastAPI:
     app.add_exception_handler(ApiError, api_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, _validation_error_handler)  # type: ignore[arg-type]
 
-    app.include_router(upload.router)
-    app.include_router(status.router)
+    app.include_router(videos.router)
+    app.include_router(heatmaps.router)
     app.include_router(health.router)
 
     app.mount(
         MEDIA_MOUNT_PATH,
-        StaticFiles(directory=settings.jobs_dir, check_dir=False),
+        StaticFiles(directory=settings.data_dir, check_dir=False),
         name="media",
     )
 

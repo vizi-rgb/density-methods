@@ -35,20 +35,23 @@ def short_clip(tmp_path_factory):
     return output
 
 
-def test_pipeline_produces_overlays_for_a_few_real_frames(short_clip) -> None:
+@pytest.mark.parametrize(
+    "heatmap_request",
+    [
+        {"type": "directional", "direction": "all"},
+        {"type": "speed", "min_speed": None, "max_speed": None},
+        {"type": "cluster", "group_size": 2},
+    ],
+)
+def test_pipeline_produces_overlays_for_a_few_real_frames(short_clip, heatmap_request) -> None:
     metadata = pipeline.read_metadata(short_clip)
     settings = Settings()
 
     frames = list(
-        itertools.islice(
-            pipeline.run(short_clip, metadata, ["directional", "speed", "cluster"], settings),
-            5,
-        )
+        itertools.islice(pipeline.run(short_clip, metadata, heatmap_request, settings), 5)
     )
 
     assert len(frames) == 5
-    for overlays in frames:
-        assert set(overlays) == {"directional", "speed", "cluster"}
-        for frame in overlays.values():
-            assert frame.shape == (metadata.height, metadata.width, 3)
-            assert frame.dtype.name == "uint8"
+    for frame in frames:
+        assert frame.shape == (metadata.height, metadata.width, 3)
+        assert frame.dtype.name == "uint8"

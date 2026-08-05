@@ -45,49 +45,54 @@ def _reset_fake_encoder_instances():
 
 _METADATA = DataSourceInfo(height=4, width=4, frames=2, fps=10)
 _FRAME = np.zeros((4, 4, 3), dtype=np.uint8)
+_HEATMAP_REQUEST = {"type": "directional", "direction": "right"}
 
 
-def test_run_job_success_sets_progress_and_outputs(tmp_path, monkeypatch) -> None:
+def test_run_job_success_sets_progress_and_output(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(tasks_module.pipeline, "read_metadata", lambda path: _METADATA)
     monkeypatch.setattr(
         tasks_module.pipeline,
         "run",
-        lambda video_path, metadata, heatmap_types, settings: iter(
-            [{t: _FRAME for t in heatmap_types}, {t: _FRAME for t in heatmap_types}]
-        ),
+        lambda video_path, metadata, heatmap_request, settings: iter([_FRAME, _FRAME]),
     )
-    monkeypatch.setattr(tasks_module, "HlsEncoder", _FakeEncoder)
+    monkeypatch.setattr(tasks_module, "Mp4Encoder", _FakeEncoder)
 
     job = _FakeJob()
     settings = Settings(data_dir=tmp_path)
 
     tasks_module.run_job(
-        job, "job-1", ["directional", "speed"], Path("/fake/video.mp4"), "http://x/", settings
+        job, "job-1", Path("/fake/video.mp4"), _HEATMAP_REQUEST, "http://x/", settings
     )
 
     assert job.meta["progress"] == 100
-    assert {o["type"] for o in job.meta["outputs"]} == {"directional", "speed"}
-    assert all(o["manifest_url"].startswith("http://x/media/job-1/") for o in job.meta["outputs"])
-    assert all(encoder.closed and not encoder.killed for encoder in _FakeEncoder.instances)
+    assert job.meta["output"]["type"] == "directional"
+    assert job.meta["output"]["label"] == "Directional — right"
+    assert job.meta["output"]["video_url"] == "http://x/media/jobs/job-1/output.mp4"
+    assert len(_FakeEncoder.instances) == 1
+    encoder = _FakeEncoder.instances[0]
+    assert encoder.closed and not encoder.killed
+    assert len(encoder.frames_written) == 2
 
 
-def test_run_job_failure_records_error_and_kills_encoders(tmp_path, monkeypatch) -> None:
-    def _failing_run(video_path, metadata, heatmap_types, settings):
-        yield {t: _FRAME for t in heatmap_types}
+def test_run_job_failure_records_error_and_kills_encoder(tmp_path, monkeypatch) -> None:
+    def _failing_run(video_path, metadata, heatmap_request, settings):
+        yield _FRAME
         raise RuntimeError("model exploded")
 
     monkeypatch.setattr(tasks_module.pipeline, "read_metadata", lambda path: _METADATA)
     monkeypatch.setattr(tasks_module.pipeline, "run", _failing_run)
-    monkeypatch.setattr(tasks_module, "HlsEncoder", _FakeEncoder)
+    monkeypatch.setattr(tasks_module, "Mp4Encoder", _FakeEncoder)
 
     job = _FakeJob()
     settings = Settings(data_dir=tmp_path)
 
     with pytest.raises(RuntimeError, match="model exploded"):
         tasks_module.run_job(
-            job, "job-2", ["directional"], Path("/fake/video.mp4"), "http://x/", settings
+            job, "job-2", Path("/fake/video.mp4"), _HEATMAP_REQUEST, "http://x/", settings
         )
 
     assert job.meta["error"] == "model exploded"
-    assert "outputs" not in job.meta
-    assert all(encoder.killed and not encoder.closed for encoder in _FakeEncoder.instances)
+    assert "output" not in job.meta
+    assert len(_FakeEncoder.instances) == 1
+    encoder = _FakeEncoder.instances[0]
+    assert encoder.killed and not encoder.closed

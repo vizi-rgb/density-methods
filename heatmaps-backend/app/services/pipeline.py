@@ -1,5 +1,5 @@
 """Orchestrates the `lib` (density-methods) building blocks into a single
-video-in / per-frame-overlays-out pipeline.
+video-in / per-frame-overlay-out pipeline for exactly one heatmap request.
 
 There is no such single entrypoint in `lib` itself — `lib/main.py` wires the
 same pieces together by hand for one hardcoded video/ROI/tripwire setup. This
@@ -16,9 +16,9 @@ as accurate as that calibration happens to be for the uploaded footage.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 from config.config_loader import ConfigLoader, TrackerConfig
@@ -53,8 +53,13 @@ class _HeatmapTrack(Protocol):
 
 class _DirectionalTrack:
     def __init__(
-        self, metadata: DataSourceInfo, settings: Settings, max_lost_frames: int
+        self,
+        direction: str,
+        metadata: DataSourceInfo,
+        settings: Settings,
+        max_lost_frames: int,
     ) -> None:
+        self._direction = direction
         self._heatmap = (
             DirectionalHeatmapBuilder()
             .with_height(metadata.height)
@@ -76,15 +81,25 @@ class _DirectionalTrack:
         self._heatmap.execute_track_update_batch(lost_updates)
 
     def frame(self) -> np.ndarray:
-        return self._heatmap.get_heatmap()["all"]
+        return self._heatmap.get_heatmap()[self._direction]
 
 
 class _SpeedTrack:
+    _FILTER_NAME = "selected"
+
     def __init__(
-        self, metadata: DataSourceInfo, settings: Settings, max_lost_frames: int
+        self,
+        min_speed: float | None,
+        max_speed: float | None,
+        metadata: DataSourceInfo,
+        settings: Settings,
+        max_lost_frames: int,
     ) -> None:
         speed_filter = SpeedFilter(
-            name="all", get_speed_function=lambda u: u.speed_km_per_h
+            name=self._FILTER_NAME,
+            min_speed=min_speed if min_speed is not None else 0.0,
+            max_speed=max_speed if max_speed is not None else float("inf"),
+            get_speed_function=lambda u: u.speed_km_per_h,
         )
         self._heatmap = (
             SpeedHeatmapBuilder()
@@ -108,13 +123,18 @@ class _SpeedTrack:
         self._heatmap.execute_track_update_batch(lost_updates)
 
     def frame(self) -> np.ndarray:
-        return self._heatmap.get_heatmap()["all"]
+        return self._heatmap.get_heatmap()[self._FILTER_NAME]
 
 
 class _ClusterTrack:
     def __init__(
-        self, metadata: DataSourceInfo, settings: Settings, max_lost_frames: int
+        self,
+        group_size: int,
+        metadata: DataSourceInfo,
+        settings: Settings,
+        max_lost_frames: int,
     ) -> None:
+        self._group_size_key = str(group_size)
         self._height = metadata.height
         self._width = metadata.width
         self._heatmap = (
@@ -139,20 +159,41 @@ class _ClusterTrack:
 
     def frame(self) -> np.ndarray:
         # Cluster sizes are dynamic, unbounded dict keys (one per distinct
-        # cluster size observed so far) — there's no single fixed sub-key
-        # like directional's "all", so the rendered video sums activity
-        # across every cluster size seen.
+        # cluster size DBSCAN finds that frame) — render exactly the
+        # requested size, or an empty frame if it never occurs.
         buckets = self._heatmap.get_heatmap()
-        if not buckets:
+        bucket = buckets.get(self._group_size_key)
+        if bucket is None:
             return np.zeros((self._height, self._width), dtype=np.float32)
-        return np.sum(np.stack(list(buckets.values())), axis=0)
+        return bucket
 
 
-_TRACK_FACTORIES: dict[str, type] = {
-    "directional": _DirectionalTrack,
-    "speed": _SpeedTrack,
-    "cluster": _ClusterTrack,
-}
+def _build_track(
+    heatmap_request: dict[str, Any],
+    metadata: DataSourceInfo,
+    settings: Settings,
+    max_lost_frames: int,
+) -> _HeatmapTrack:
+    heatmap_type = heatmap_request["type"]
+
+    if heatmap_type == "directional":
+        return _DirectionalTrack(
+            heatmap_request["direction"], metadata, settings, max_lost_frames
+        )
+    if heatmap_type == "speed":
+        return _SpeedTrack(
+            heatmap_request.get("min_speed"),
+            heatmap_request.get("max_speed"),
+            metadata,
+            settings,
+            max_lost_frames,
+        )
+    if heatmap_type == "cluster":
+        return _ClusterTrack(
+            heatmap_request["group_size"], metadata, settings, max_lost_frames
+        )
+
+    raise PipelineError(f"Unsupported heatmap type: {heatmap_type!r}")
 
 
 def read_metadata(video_path: Path) -> DataSourceInfo:
@@ -169,23 +210,16 @@ def read_metadata(video_path: Path) -> DataSourceInfo:
 def run(
     video_path: Path,
     metadata: DataSourceInfo,
-    heatmap_types: Sequence[str],
+    heatmap_request: dict[str, Any],
     settings: Settings,
-) -> Iterator[dict[str, np.ndarray]]:
-    """Yields one `{heatmap_type: BGR overlay frame}` dict per input frame."""
-    unknown = set(heatmap_types) - _TRACK_FACTORIES.keys()
-    if unknown:
-        raise PipelineError(f"Unsupported heatmap type(s): {sorted(unknown)}")
-
+) -> Iterator[np.ndarray]:
+    """Yields one BGR overlay frame per input frame for `heatmap_request`."""
     tracker_config = ConfigLoader.load_tracker_config(TrackerConfig.BOTSORT)
     max_lost_frames = tracker_config.get(
         "track_buffer", settings.default_max_lost_frames
     )
 
-    tracks: dict[str, _HeatmapTrack] = {
-        heatmap_type: _TRACK_FACTORIES[heatmap_type](metadata, settings, max_lost_frames)
-        for heatmap_type in heatmap_types
-    }
+    track = _build_track(heatmap_request, metadata, settings, max_lost_frames)
 
     model = YOLOModel(str(video_path))
     raw_predictions = model.run_tracking(show=False, stream=True)
@@ -204,8 +238,7 @@ def run(
         processed = predictions_adapter.to_predictions(raw_prediction)
         source_image = raw_prediction.orig_img
 
-        for track in tracks.values():
-            track.apply_decay()
+        track.apply_decay()
 
         clamped_points = PointUtil.clamp_points_to_heatmap_points(
             processed.points, metadata.width, metadata.height
@@ -213,14 +246,9 @@ def run(
         track_ids = [point.track_id for point in processed.points]
         updates = momentum.update_batch(track_ids, clamped_points)
 
-        for track in tracks.values():
-            track.handle(updates)
+        track.handle(updates)
 
         lost_updates = momentum.flush_lost_tracks_buffers(set(track_ids))
-        for track in tracks.values():
-            track.flush(lost_updates)
+        track.flush(lost_updates)
 
-        yield {
-            heatmap_type: visualizer.draw(track.frame(), source_image)
-            for heatmap_type, track in tracks.items()
-        }
+        yield visualizer.draw(track.frame(), source_image)

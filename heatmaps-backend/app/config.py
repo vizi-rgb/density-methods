@@ -5,8 +5,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
 
-HEATMAP_TYPES: tuple[str, ...] = ("directional", "speed", "cluster")
-
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -18,10 +16,8 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:5173"]
 
-    hls_segment_seconds: int = 4
-
     # job state kept in Redis (RQ job meta); how long a finished job's
-    # state/output stays queryable via GET /api/status/{job_id}.
+    # state/output stays queryable via GET /api/heatmaps/{job_id}.
     job_ttl_seconds: int = 24 * 60 * 60
 
     # matches the values lib/main.py uses for its own reference pipeline run.
@@ -34,8 +30,8 @@ class Settings(BaseSettings):
     progress_update_every_n_frames: int = 10
 
     @property
-    def uploads_dir(self) -> Path:
-        return self.data_dir / "uploads"
+    def videos_dir(self) -> Path:
+        return self.data_dir / "videos"
 
     @property
     def jobs_dir(self) -> Path:

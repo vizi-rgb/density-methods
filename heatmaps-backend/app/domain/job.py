@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel
 from rq.job import Job as RQJob
@@ -17,14 +18,32 @@ class JobStatus(StrEnum):
 class VideoOutput(BaseModel):
     type: str
     label: str
-    manifest_url: str
+    video_url: str
 
 
-HEATMAP_TYPE_LABELS: dict[str, str] = {
-    "directional": "Directional flow",
-    "speed": "Speed",
-    "cluster": "Cluster",
-}
+def build_label(heatmap_request: dict[str, Any]) -> str:
+    """Human label for a heatmap request, e.g. for `VideoOutput.label`."""
+    heatmap_type = heatmap_request["type"]
+
+    if heatmap_type == "directional":
+        return f"Directional — {heatmap_request['direction']}"
+
+    if heatmap_type == "speed":
+        min_speed = heatmap_request.get("min_speed")
+        max_speed = heatmap_request.get("max_speed")
+        if min_speed is not None and max_speed is not None:
+            return f"Speed {min_speed}–{max_speed} km/h"
+        if min_speed is not None:
+            return f"Speed ≥{min_speed} km/h"
+        if max_speed is not None:
+            return f"Speed ≤{max_speed} km/h"
+        return "Speed (any)"
+
+    if heatmap_type == "cluster":
+        return f"Cluster size {heatmap_request['group_size']}"
+
+    raise ValueError(f"Unknown heatmap type: {heatmap_type!r}")
+
 
 _RQ_QUEUED_STATUSES = {
     RQJobStatus.CREATED,
@@ -38,7 +57,7 @@ _RQ_FAILED_STATUSES = {RQJobStatus.FAILED, RQJobStatus.STOPPED, RQJobStatus.CANC
 class JobState(BaseModel):
     status: JobStatus
     progress: int | None = None
-    outputs: list[VideoOutput] | None = None
+    output: VideoOutput | None = None
     error: str | None = None
 
     @staticmethod
@@ -55,9 +74,11 @@ class JobState(BaseModel):
             )
 
         if rq_status == RQJobStatus.FINISHED:
-            outputs = [VideoOutput(**o) for o in job.meta.get("outputs", [])]
+            output = job.meta.get("output")
             return JobState(
-                status=JobStatus.COMPLETED, progress=100, outputs=outputs
+                status=JobStatus.COMPLETED,
+                progress=100,
+                output=VideoOutput(**output) if output else None,
             )
 
         if rq_status in _RQ_FAILED_STATUSES:

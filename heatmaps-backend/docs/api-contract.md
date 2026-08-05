@@ -1,6 +1,8 @@
 # API Contract — heatmaps-backend
 
-Companion to `implementation-plan.md`. This is the authoritative contract the frontend must implement against. It is kept in lockstep with `heatmaps-frontend/docs/api-integration.md` — the two describe the same wire format from each side; if you change one, change the other.
+Companion to `implementation-plan.md`. This is the authoritative contract the frontend must implement against. Kept in lockstep with `heatmaps-frontend/docs/api-integration.md` — if you change one, change the other.
+
+**This is a breaking change from an earlier version of this contract.** Upload no longer takes `heatmap_types`; a video is uploaded once, then any number of individual heatmap analyses are requested against it, each producing its own MP4 (not HLS — see `implementation-plan.md` for why HLS was dropped).
 
 All error responses use the shape:
 
@@ -8,100 +10,94 @@ All error responses use the shape:
 { "error": { "code": "string", "message": "human-readable string" } }
 ```
 
-## `POST /api/upload`
+Validation failures on a JSON request body (missing/invalid fields, caught by FastAPI/pydantic) come back as `400` with `code: "invalid_request"` — this covers all the per-type validation below (invalid `direction`, `group_size < 2`, `min_speed > max_speed`), there's no separate `422` tier.
 
-Multipart form upload that creates a new analysis job.
+## `POST /api/videos`
 
-**Request** (`multipart/form-data`):
+Multipart upload of the raw video. No other fields.
 
-| Field | Type | Notes |
-|---|---|---|
-| `file` | file | Video file. Validated by content-type **and** magic bytes, not just extension. Rejected if it exceeds `MAX_UPLOAD_MB` (config). |
-| `heatmap_types` | string, repeated (or comma-separated) | Subset of `directional`, `speed`, `cluster`. Must contain at least one value. `roi`/`tripwire` are not accepted in v1 (see `implementation-plan.md` — no geometry input exists yet). **Not yet sent by the frontend** — see `heatmaps-frontend/docs/api-integration.md` "current implementation gaps". |
+**Request** (`multipart/form-data`): `file` — validated by content-type **and** magic bytes (`filetype`), not just extension. Rejected if it exceeds `MAX_UPLOAD_MB`.
 
 **Response `202 Accepted`:**
 
 ```json
-{ "job_id": "3fa1c2e0-...-uuid" }
+{ "video_id": "3fa1c2e0-...-uuid", "video_url": "http://localhost:8000/media/videos/3fa1c2e0-.../source.mp4" }
 ```
 
-**Error responses:**
+`video_url` is the **raw uploaded file, unmodified** — served as-is for the frontend's preview player, not transcoded. No job is created by this endpoint.
 
-- `400` — missing `file` or `heatmap_types`.
-- `415` — file is not a supported video type (checked via magic bytes).
-- `413` — file exceeds `MAX_UPLOAD_MB`.
-- `422` — `heatmap_types` contains an unknown/unsupported value (e.g. `roi`), or is empty.
+**Error responses:** `400` missing/empty file, `415` not a recognized video (magic-byte sniff failed), `413` exceeds `MAX_UPLOAD_MB`. No video is stored on any error.
 
-No job is created on any error response.
+## `POST /api/videos/{video_id}/heatmaps`
 
-## `GET /api/status/{job_id}`
+Creates one heatmap-analysis job against a previously uploaded video. JSON body, discriminated by `type`:
 
-Point-in-time snapshot of job state — used by the frontend to recover state after a page reload or a dropped SSE connection (not yet called anywhere in the frontend — see gaps list linked above). Same payload shape as SSE events (below), without the `event:` framing.
+```json
+{ "type": "directional", "direction": "right" }
+```
+```json
+{ "type": "speed", "min_speed": 3.5, "max_speed": null }
+```
+```json
+{ "type": "cluster", "group_size": 3 }
+```
 
-**Response `200`:**
+| Type | Fields | Notes |
+|---|---|---|
+| `directional` | `direction`: one of `all`/`static`/`up`/`down`/`left`/`right` | Exactly one — rendering shows only movement classified in that direction. |
+| `speed` | `min_speed`, `max_speed`: optional numbers (km/h) | Either or both may be omitted (no lower/upper bound). `min_speed > max_speed` (when both given) is rejected. |
+| `cluster` | `group_size`: integer ≥ 2 | Renders groups of **exactly** this many people (not "N or more") — matches `lib`'s DBSCAN output, which buckets by exact cluster size. `1` is rejected (DBSCAN's `min_samples=2` means no such bucket can exist). |
+
+**Response `202 Accepted`:** `{ "job_id": "..." }`
+
+**Error responses:** `404` (`video_not_found`) if `video_id` doesn't exist, `400` (`invalid_request`) for any of the per-type validation above.
+
+## `GET /api/heatmaps/{job_id}`
+
+Point-in-time snapshot of one job — used by the frontend to recover state after a page reload or a dropped SSE connection. Same shape as SSE events below, without the `event:` framing.
 
 ```json
 { "status": "processing", "progress": 45 }
 ```
-
-or, if completed:
-
 ```json
 {
   "status": "completed",
   "progress": 100,
-  "outputs": [
-    { "type": "directional", "label": "Directional flow", "manifest_url": "https://.../media/{job_id}/directional/stream.m3u8" },
-    { "type": "speed", "label": "Speed", "manifest_url": "https://.../media/{job_id}/speed/stream.m3u8" }
-  ]
+  "output": { "type": "directional", "label": "Directional — right", "video_url": "http://.../media/jobs/{job_id}/output.mp4" }
 }
 ```
 
-`outputs` is an **array**, one entry per selected heatmap type, in the order they were requested. `type` is always one of `directional`/`speed`/`cluster` — the frontend maps it to a display `label` itself (or uses the server-provided `label` directly); either way `type` is the stable key, `label` is just a suggested human string.
+`output` is a **single object** — one job always produces exactly one result. `label` is a ready-to-display string built from the request (`"Directional — right"`, `"Speed ≥3.5 km/h"`, `"Speed 3.5–10 km/h"`, `"Speed (any)"`, `"Cluster size 3"`).
 
-**Error responses:**
+**Error responses:** `404` (`job_not_found`) — unknown or expired job.
 
-- `404` — unknown `job_id` (not found in Redis — may also mean it expired; see `implementation-plan.md` job-history limitation).
+## `GET /api/heatmaps/{job_id}/stream`
 
-## `GET /api/status/{job_id}/stream`
-
-Server-Sent Events stream of job progress. Content-Type: `text/event-stream`. The server polls job state internally (~1s interval) and emits an event on every status/progress change; the stream closes after a terminal event (`completed` or `failed`).
-
-Event payloads (`data:` lines, JSON):
+Server-Sent Events. Content-Type `text/event-stream`. Polls internally (~1s) and emits an event on every status/progress change; closes after `completed`/`failed`.
 
 ```
 data: {"status": "queued"}
 
 data: {"status": "processing", "progress": 45}
 
-data: {"status": "completed", "progress": 100, "outputs": [
-  {"type": "directional", "label": "Directional flow", "manifest_url": "https://.../directional/stream.m3u8"},
-  {"type": "speed", "label": "Speed", "manifest_url": "https://.../speed/stream.m3u8"}
-]}
+data: {"status": "completed", "progress": 100, "output": {"type": "cluster", "label": "Cluster size 3", "video_url": "http://.../media/jobs/{job_id}/output.mp4"}}
 ```
-
-or on failure:
-
 ```
 data: {"status": "failed", "error": "unsupported codec in source video"}
 ```
 
-`manifest_url` values are absolute URLs on the backend's own host (local-disk storage served via `StaticFiles` in v1) — not assumed to be a CDN/S3 URL. CORS on the backend must allow the frontend origin for both `/api/*` and `/media/*` so `hls.js` can fetch manifests/segments cross-origin in dev (Vite proxies `/api`, but media may be fetched directly against `VITE_API_URL`).
+`video_url` values (both here and from `POST /api/videos`) are absolute URLs on the backend's own host — plain files served via `StaticFiles`, not signed/CDN URLs. CORS must allow the frontend origin for both `/api/*` and `/media/*`.
 
 ## `GET /health`
 
-Liveness/readiness probe. Checks actual Redis connectivity (not a hardcoded response).
-
-- `200` — Redis reachable: `{"status": "ok", "workers_online": <int>, "queued_jobs": <int>}`. `workers_online` is the number of RQ workers currently registered on the `video-processing` queue; `queued_jobs` is jobs waiting to be picked up (not counting ones already `processing`). `workers_online == 0 && queued_jobs > 0` means uploads are accepted but nothing will ever process them — the direct diagnosis for "upload succeeded but progress is stuck at 0%".
-- `503` — Redis unreachable or other dependency failure; body includes `{"error": {...}}` with the failing dependency named.
+- `200` — Redis reachable: `{"status": "ok", "workers_online": <int>, "queued_jobs": <int>}`. `workers_online == 0 && queued_jobs > 0` is the direct diagnosis for "a job is stuck, progress never moves."
+- `503` — Redis unreachable; body is `{"error": {...}}`.
 
 ## Static media
 
-Completed HLS output is served as static files:
-
 ```
-GET /media/{job_id}/{heatmap_type}/stream.m3u8
-GET /media/{job_id}/{heatmap_type}/segment_XXX.ts
+GET /media/videos/{video_id}/source.<ext>   # raw upload, for the preview player
+GET /media/jobs/{job_id}/output.mp4          # one heatmap analysis's result
 ```
 
-`{job_id}` and `{heatmap_type}` are validated against the known job/type set before serving (no arbitrary path traversal via these segments).
+Both are plain MP4 (h264, `-movflags +faststart` on the encoded ones so `<video>` can seek without downloading the whole file) — no manifest, no segments. `{video_id}`/`{job_id}` are server-generated UUIDs; `StaticFiles` provides the path-traversal guard.

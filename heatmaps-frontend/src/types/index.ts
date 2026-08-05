@@ -1,27 +1,30 @@
-export type AppState =
-  | 'IDLE'
-  | 'UPLOADING'
-  | 'PROCESSING'
-  | 'READY_TO_PLAY'
-  | 'ERROR';
+export type AppState = 'IDLE' | 'UPLOADING' | 'READY' | 'ERROR';
 
-export type HeatmapType = 'directional' | 'speed' | 'cluster';
+export type Direction = 'all' | 'static' | 'up' | 'down' | 'left' | 'right';
 
-export const HEATMAP_TYPES: { value: HeatmapType; label: string }[] = [
-  { value: 'directional', label: 'Directional flow' },
-  { value: 'speed', label: 'Speed' },
-  { value: 'cluster', label: 'Cluster' },
-];
+export const DIRECTIONS: Direction[] = ['all', 'static', 'up', 'down', 'left', 'right'];
+
+export type HeatmapRequest =
+  | { type: 'directional'; direction: Direction }
+  | { type: 'speed'; min_speed?: number; max_speed?: number }
+  | { type: 'cluster'; group_size: number };
 
 export interface VideoOutput {
-  type: HeatmapType;
+  type: string;
   label: string;
-  manifest_url: string;
+  video_url: string;
 }
 
-export interface SSEEvent {
+export interface HeatmapJobEvent {
   status: 'queued' | 'processing' | 'completed' | 'failed';
   progress?: number;
-  outputs?: VideoOutput[];
+  output?: VideoOutput;
   error?: string;
+}
+
+/** One entry in the results grid — a job that's been requested, tracked
+ * client-side from the moment "Add" is clicked. */
+export interface HeatmapTileData {
+  jobId: string;
+  label: string;
 }

@@ -1,6 +1,6 @@
-import type { HeatmapType, SSEEvent, VideoOutput } from '../types';
+import type { HeatmapJobEvent, HeatmapRequest } from '../types';
 
-export class UploadError extends Error {
+export class ApiRequestError extends Error {
   status: number;
 
   constructor(status: number, message: string) {
@@ -18,37 +18,44 @@ async function errorMessageFor(res: Response): Promise<string> {
   }
   switch (res.status) {
     case 400:
-      return 'Brak wymaganych danych (plik lub typy heatmapy).';
+      return 'Nieprawidłowe dane żądania.';
+    case 404:
+      return 'Nie znaleziono wideo lub zadania.';
     case 413:
       return 'Plik jest za duży.';
     case 415:
       return 'Nieobsługiwany format pliku.';
-    case 422:
-      return 'Nieprawidłowy wybór typów heatmapy.';
     default:
       return `Błąd serwera (${res.status}).`;
   }
 }
 
-export async function uploadVideo(
-  file: File,
-  heatmapTypes: HeatmapType[],
-): Promise<{ job_id: string }> {
+export async function uploadVideo(file: File): Promise<{ video_id: string; video_url: string }> {
   const form = new FormData();
   form.append('file', file);
-  heatmapTypes.forEach((type) => form.append('heatmap_types', type));
-  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/upload`, {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/videos`, {
     method: 'POST',
     body: form,
   });
-  if (!res.ok) throw new UploadError(res.status, await errorMessageFor(res));
+  if (!res.ok) throw new ApiRequestError(res.status, await errorMessageFor(res));
+  return res.json() as Promise<{ video_id: string; video_url: string }>;
+}
+
+export async function createHeatmapJob(
+  videoId: string,
+  request: HeatmapRequest,
+): Promise<{ job_id: string }> {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/videos/${videoId}/heatmaps`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) throw new ApiRequestError(res.status, await errorMessageFor(res));
   return res.json() as Promise<{ job_id: string }>;
 }
 
-export async function getJobStatus(jobId: string): Promise<SSEEvent> {
-  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/status/${jobId}`);
-  if (!res.ok) throw new UploadError(res.status, await errorMessageFor(res));
-  return res.json() as Promise<SSEEvent>;
+export async function getHeatmapStatus(jobId: string): Promise<HeatmapJobEvent> {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/heatmaps/${jobId}`);
+  if (!res.ok) throw new ApiRequestError(res.status, await errorMessageFor(res));
+  return res.json() as Promise<HeatmapJobEvent>;
 }
-
-export type { VideoOutput };

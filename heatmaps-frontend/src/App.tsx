@@ -1,114 +1,99 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState } from 'react'
 import { FileUpload } from './components/FileUpload'
-import { JobStatus } from './components/JobStatus'
-import { VideoPlayerGrid } from './components/VideoPlayerGrid'
-import { uploadVideo, getJobStatus, UploadError } from './api/client'
-import { openSSEStream } from './api/sseStream'
-import type { AppState, HeatmapType, VideoOutput } from './types'
-import './App.css'
+import { VideoPreview } from './components/VideoPreview'
+import { HeatmapMenu } from './components/HeatmapMenu'
+import { HeatmapGrid } from './components/HeatmapGrid'
+import { cn } from '@sglara/cn'
+import { uploadVideo, createHeatmapJob, ApiRequestError } from './api/client'
+import { describeHeatmapRequest } from './utils/describeHeatmapRequest'
+import type { AppState, HeatmapRequest, HeatmapTileData } from './types'
 
-const JOB_ID_STORAGE_KEY = 'heatmaps.jobId'
+const SESSION_STORAGE_KEY = 'heatmaps.session'
+
+interface Session {
+  videoId: string
+  videoUrl: string
+  tiles: HeatmapTileData[]
+}
+
+function loadSession(): Session | null {
+  const raw = sessionStorage.getItem(SESSION_STORAGE_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as Session
+  } catch {
+    return null
+  }
+}
+
+function saveSession(session: Session | null) {
+  if (session) {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+  } else {
+    sessionStorage.removeItem(SESSION_STORAGE_KEY)
+  }
+}
 
 export default function App() {
-  const [appState, setAppState] = useState<AppState>('IDLE')
-  const [progress, setProgress] = useState(0)
-  const [outputs, setOutputs] = useState<VideoOutput[]>([])
+  const [session, setSession] = useState<Session | null>(loadSession)
+  const [appState, setAppState] = useState<AppState>(() => (session ? 'READY' : 'IDLE'))
   const [error, setError] = useState<string | null>(null)
-  const sseRef = useRef<EventSource | null>(null)
-
-  const connectStream = useCallback((jobId: string) => {
-    const es = openSSEStream(
-      jobId,
-      (event) => {
-        if (event.status === 'queued') {
-          setProgress(0)
-        } else if (event.status === 'processing') {
-          setProgress(event.progress ?? 0)
-        } else if (event.status === 'completed') {
-          es.close()
-          sseRef.current = null
-          setProgress(100)
-          setOutputs(event.outputs ?? [])
-          setAppState('READY_TO_PLAY')
-        } else if (event.status === 'failed') {
-          es.close()
-          sseRef.current = null
-          sessionStorage.removeItem(JOB_ID_STORAGE_KEY)
-          setError(event.error ?? 'Przetwarzanie nie powiodło się')
-          setAppState('ERROR')
-        }
-      },
-      () => {
-        setError('Utracono połączenie SSE')
-        setAppState('ERROR')
-      },
-    )
-    sseRef.current = es
-  }, [])
-
-  // Recover state after a page reload if a job was in flight.
-  useEffect(() => {
-    const jobId = sessionStorage.getItem(JOB_ID_STORAGE_KEY)
-    if (!jobId) return
-
-    getJobStatus(jobId)
-      .then((snapshot) => {
-        if (snapshot.status === 'completed') {
-          setProgress(100)
-          setOutputs(snapshot.outputs ?? [])
-          setAppState('READY_TO_PLAY')
-        } else if (snapshot.status === 'failed') {
-          sessionStorage.removeItem(JOB_ID_STORAGE_KEY)
-          setError(snapshot.error ?? 'Przetwarzanie nie powiodło się')
-          setAppState('ERROR')
-        } else {
-          setProgress(snapshot.status === 'processing' ? snapshot.progress ?? 0 : 0)
-          setAppState('PROCESSING')
-          connectStream(jobId)
-        }
-      })
-      .catch(() => {
-        sessionStorage.removeItem(JOB_ID_STORAGE_KEY)
-      })
-    // Only run once on mount — connectStream is stable (empty dep array).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // Cleanup SSE on unmount
-  useEffect(() => {
-    return () => {
-      sseRef.current?.close()
-    }
-  }, [])
+  const [addError, setAddError] = useState<string | null>(null)
+  const [layout, setLayout] = useState<'grid' | 'list'>('grid')
+  const [editMode, setEditMode] = useState<'normal' | 'edit'>('normal')
 
   const reset = () => {
-    sseRef.current?.close()
-    sseRef.current = null
-    sessionStorage.removeItem(JOB_ID_STORAGE_KEY)
+    saveSession(null)
+    setSession(null)
     setAppState('IDLE')
-    setProgress(0)
-    setOutputs([])
     setError(null)
+    setAddError(null)
   }
 
-  const handleUpload = async (file: File, heatmapTypes: HeatmapType[]) => {
+  const handleUpload = async (file: File) => {
     setAppState('UPLOADING')
     setError(null)
     try {
-      const { job_id } = await uploadVideo(file, heatmapTypes)
-      sessionStorage.setItem(JOB_ID_STORAGE_KEY, job_id)
-      setAppState('PROCESSING')
-      setProgress(0)
-      connectStream(job_id)
+      const { video_id, video_url } = await uploadVideo(file)
+      const newSession: Session = { videoId: video_id, videoUrl: video_url, tiles: [] }
+      saveSession(newSession)
+      setSession(newSession)
+      setAppState('READY')
     } catch (err) {
-      setError(err instanceof UploadError ? err.message : 'Błąd wysyłania pliku')
+      setError(err instanceof ApiRequestError ? err.message : 'Błąd wysyłania pliku')
       setAppState('ERROR')
     }
   }
 
+  const handleAddHeatmap = async (request: HeatmapRequest, customName?: string) => {
+    if (!session) return
+    setAddError(null)
+    try {
+      const { job_id } = await createHeatmapJob(session.videoId, request)
+      const newSession: Session = {
+        ...session,
+        tiles: [...session.tiles, { jobId: job_id, label: customName ?? describeHeatmapRequest(request) }],
+      }
+      saveSession(newSession)
+      setSession(newSession)
+    } catch (err) {
+      setAddError(err instanceof ApiRequestError ? err.message : 'Nie udało się dodać analizy')
+    }
+  }
+
+  const handleDeleteTile = (jobId: string) => {
+    if (!session) return
+    const newSession: Session = {
+      ...session,
+      tiles: session.tiles.filter((tile) => tile.jobId !== jobId),
+    }
+    saveSession(newSession)
+    setSession(newSession)
+  }
+
   return (
-    <main style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2rem', gap: '2rem', minHeight: '100vh' }}>
-      <h1>Analiza Wideo</h1>
+    <main className="flex flex-col items-center gap-8 min-h-screen p-8">
+      <h1 className="text-3xl font-semibold">Analiza Wideo</h1>
 
       {appState === 'IDLE' && (
         <FileUpload onUpload={handleUpload} />
@@ -118,21 +103,50 @@ export default function App() {
         <p>⏳ Wysyłanie pliku...</p>
       )}
 
-      {appState === 'PROCESSING' && (
-        <JobStatus progress={progress} />
-      )}
-
-      {appState === 'READY_TO_PLAY' && (
+      {appState === 'READY' && session && (
         <>
-          <VideoPlayerGrid outputs={outputs} />
-          <button onClick={reset}>↩ Nowa analiza</button>
+          <VideoPreview videoUrl={session.videoUrl} />
+
+          <HeatmapMenu onAdd={handleAddHeatmap} />
+          {addError && <p className="text-red-600">❌ {addError}</p>}
+
+          <div className="flex flex-row gap-2">
+            <button
+                onClick={() => setLayout((l) => (l === 'grid' ? 'list' : 'grid'))}
+                className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {layout === 'grid' ? '☰ Widok listy' : '▦ Widok siatki'}
+            </button>
+
+            <button
+                onClick={() => setEditMode((l) => (l === 'normal' ? 'edit' : 'normal'))}
+                className={cn("inline-flex", "items-center", "justify-center", "rounded-md", "border", "border-gray-300", "px-3", "py-1.5", "text-sm", "font-medium", "disabled:opacity-50", "disabled:cursor-not-allowed", editMode === 'edit' ? 'bg-red-900 text-white' : 'hover:bg-gray-50')}
+            >
+              {editMode === 'normal' ? '️🗑 Tryb edytowania' : '👁️ Tryb przeglądania'}
+            </button>
+
+          </div>
+
+          <HeatmapGrid tiles={session.tiles} layout={layout} editMode={editMode} onDelete={handleDeleteTile} />
+
+          <button
+            onClick={reset}
+            className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ↩ Nowe wideo
+          </button>
         </>
       )}
 
       {appState === 'ERROR' && (
-        <div style={{ textAlign: 'center' }}>
-          <p style={{ color: 'red' }}>❌ {error}</p>
-          <button onClick={reset}>↩ Spróbuj ponownie</button>
+        <div className="text-center">
+          <p className="text-red-600">❌ {error}</p>
+          <button
+            onClick={reset}
+            className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ↩ Spróbuj ponownie
+          </button>
         </div>
       )}
     </main>

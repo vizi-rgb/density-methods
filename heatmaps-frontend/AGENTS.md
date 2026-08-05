@@ -1,42 +1,46 @@
 # AGENTS.md — heatmaps-frontend
 
-React app: upload a video, watch progress over SSE, play back the resulting
-heatmap-overlay video(s) with `hls.js`. Talks to `heatmaps-backend`.
+React app: upload a video once, then incrementally add independent,
+parameterized heatmap analyses (directional/speed/cluster) against it, each
+landing as its own tile in a grid as it completes. Talks to
+`heatmaps-backend`.
 
 Full design docs — read these before making non-trivial changes:
-- [`docs/frontend-plan.md`](docs/frontend-plan.md) — architecture, stack, state machine, file structure.
-- [`docs/api-integration.md`](docs/api-integration.md) — the backend contract as consumed here, incl. any open gaps.
-- [`docs/acceptance-criteria.md`](docs/acceptance-criteria.md) — Definition of Done checklist (done vs. not-done).
+- [`docs/frontend-plan.md`](docs/frontend-plan.md) — architecture, stack, state machine, component breakdown.
+- [`docs/api-integration.md`](docs/api-integration.md) — the backend contract as consumed here, incl. what's unverified.
+- [`docs/acceptance-criteria.md`](docs/acceptance-criteria.md) — Definition of Done checklist.
 
 ## Stack
 
-Vite 8, React 19 + TypeScript ~6 (strict-ish: `noUnusedLocals`,
-`noUnusedParameters`, `erasableSyntaxOnly`), `hls.js` 1.6 for playback (MSE)
-with native-HLS Safari fallback, native `fetch`/`EventSource` (no axios, no
-react-query), pnpm, CSS-in-JS-free (inline styles + `App.css`/`index.css`).
-No router, no state management library, no UI framework — this is
-intentionally small.
+Vite 8, React 19 + TypeScript ~6 (strict: `noUnusedLocals`,
+`noUnusedParameters`, `erasableSyntaxOnly`), native `fetch`/`EventSource` —
+**no `hls.js`** (removed deliberately, see gotcha below), pnpm. No router,
+no state management library, no UI framework — stays small on purpose.
 
 ## Layout
 
 ```
 src/
-  api/client.ts       # uploadVideo(file, heatmapTypes), getJobStatus(jobId), UploadError
-  api/sseStream.ts     # openSSEStream(jobId, onMessage, onError)
+  api/client.ts        # uploadVideo(file), createHeatmapJob(videoId, request), getHeatmapStatus(jobId), ApiRequestError
+  api/sseStream.ts      # openHeatmapStream(jobId, onMessage, onError)
   components/
-    FileUpload.tsx      # file input + heatmap-type checkboxes
-    JobStatus.tsx        # progress bar
-    VideoPlayer.tsx      # single <video> + hls.js
-    VideoPlayerGrid.tsx  # tabs over outputs[] (no tabs if only 1 output)
-  utils/hlsLoader.ts   # initHls(): hls.js if supported, else native Safari HLS
-  types/index.ts       # AppState, HeatmapType, HEATMAP_TYPES, VideoOutput, SSEEvent
-  App.tsx              # state machine + sessionStorage-based reload recovery
+    FileUpload.tsx        # file input + submit only — no options
+    VideoPreview.tsx       # raw upload playback
+    HeatmapMenu.tsx          # category + per-category params + Add
+    HeatmapTile.tsx           # owns ONE job end-to-end: fetch + SSE + render
+    HeatmapGrid.tsx            # grid of tiles, empty-state placeholder
+    JobStatus.tsx                # progress bar, reused inside HeatmapTile
+  utils/describeHeatmapRequest.ts  # client-side label, mirrors backend's build_label()
+  types/index.ts        # AppState, HeatmapRequest, VideoOutput, HeatmapJobEvent, HeatmapTileData
+  App.tsx               # state machine + sessionStorage persistence (one blob: videoId/videoUrl/tiles)
 ```
 
-State machine: `IDLE → UPLOADING → PROCESSING → READY_TO_PLAY` (+ `ERROR`
-from anywhere). `job_id` is persisted to `sessionStorage` on upload start so
-a page reload mid-job recovers via `GET /api/status/{job_id}` instead of
-dropping back to `IDLE`.
+State machine: `IDLE → UPLOADING → READY` (+`ERROR` for upload failure
+only — per-tile failures are handled inside `HeatmapTile`, never global).
+`sessionStorage` key `heatmaps.session` persists `{videoId, videoUrl,
+tiles}` as one JSON blob; on reload each `HeatmapTile` independently
+re-fetches its own state and reopens SSE if not yet terminal — `App.tsx`
+itself has no per-job logic at all.
 
 ## Commands
 
@@ -47,45 +51,55 @@ pnpm build     # tsc -b && vite build
 pnpm lint      # eslint .
 ```
 
-No test runner is set up. `pnpm build`+`pnpm lint` are the only current
-automated checks — treat "build clean + lint clean" as the bar for a change,
-and manually exercise the upload→SSE→playback flow in a browser for
-anything touching `App.tsx` or the API layer.
+No test runner. `pnpm build`+`pnpm lint` are the only automated checks.
 
 ## Non-obvious things worth knowing before touching this code
 
+- **No `hls.js`, on purpose — don't reintroduce it without a real reason.**
+  Every video (raw upload preview and every heatmap result) is a plain MP4
+  now. HLS was dropped because its actual benefits (adaptive bitrate,
+  progressive playback, CDN segment caching) were never used here — one
+  fixed quality, self-hosted, and the backend never hands over a URL before
+  a job is `completed` anyway. Removing it dropped the production bundle
+  from ~707KB to ~202KB. If a future need for progressive playback (showing
+  video *while* it's still processing) comes up, that requires backend
+  changes too, not just switching `<video>` sources back to HLS.
+- **One job = one heatmap type + params = one tile.** Second design of this
+  app. The first let you select multiple types at upload and got an array
+  of outputs back from one job, shown as tabs. That's gone — `output` in
+  every API response is now singular, `HeatmapTile` owns exactly one job,
+  and `HeatmapGrid` is a real grid (not tabs) because tiles are independent,
+  not variants of the same job.
+- **Cluster `group_size` is an exact match server-side**, not "N or more"
+  — confirmed with the user. The number input just needs `>= 2` (matches
+  backend's DBSCAN `min_samples=2`); don't add "at least N" framing to the
+  label or UI copy.
+- **Tile labels are computed client-side** (`describeHeatmapRequest.ts`),
+  immediately at Add-time, from the exact request object — not from the
+  server's `output.label` (which only exists once a job completes, so
+  waiting for it would mean tiles show a placeholder for their entire
+  processing time). The two should always agree since both mirror the same
+  logic (`app/domain/job.py`'s `build_label` on the backend) — if you change
+  one, change the other.
+- **`useState(loadSession)` lazy initializer, not a mount `useEffect`**, for
+  restoring `sessionStorage` in `App.tsx`. `eslint-plugin-react-hooks` 7.x's
+  `set-state-in-effect` rule flags synchronous `setState` inside a mount
+  effect as an anti-pattern (extra render) — the fix is computing both
+  `session` and the derived initial `appState` via lazy `useState`
+  initializers instead, not suppressing the rule.
 - **`erasableSyntaxOnly` (tsconfig) forbids TS constructor parameter-property
-  shorthand** (`constructor(public status: number)`) even though it's
-  ordinary-looking TS — it emits runtime code beyond type erasure. Declare
-  the field and assign it in the constructor body instead (see
-  `UploadError` in `api/client.ts`).
-- **Backend contract uses an array for `outputs`**, not a map:
-  `{type, label, manifest_url}[]`, one entry per *selected* heatmap type, in
-  request order. `type` is the stable key (`'directional' | 'speed' |
-  'cluster'`); `label` is a display string the backend already provides —
-  safe to render directly. Don't reintroduce an object-map assumption; it
-  was deliberately standardized to this shape (see git history around the
-  docs split) to match what's already built here rather than rework it.
-- **Upload must send `heatmap_types`** (repeated form field, ≥1 of
-  `directional`/`speed`/`cluster` — see `HEATMAP_TYPES` in `types/index.ts`).
-  `roi`/`tripwire` are intentionally not offered — they need geometry input
-  (polygon/tripwire line) with no UI for it anywhere in this app.
-  `FileUpload.tsx` already enforces "select ≥1 type" before enabling submit.
-- **`SSEEvent.status` includes `'queued'`** and `progress` is optional (the
-  `queued` payload has no `progress` field) — don't assume `progress` is
-  always a number without checking status first.
-- **`heatmaps-backend` is now actually implemented** (FastAPI + Redis/RQ +
-  real YOLO pipeline + ffmpeg HLS encoding — see `../heatmaps-backend/`), not
-  just documented. This app has **not yet been run against a live backend
-  instance** — the upload/SSE/playback flow has only been verified against
-  `docs/api-integration.md`'s written contract and by code review, not by an
-  actual browser session hitting `../heatmaps-backend`. That's the natural
-  next verification step, and the honest thing to say if asked "does this
-  work end-to-end" before it's been done.
-- **Backend media URLs are absolute, same-origin-or-not depending on
-  `VITE_API_URL`** — `manifest_url` values point directly at the backend
-  host (local disk + `StaticFiles` in backend v1, not S3/a CDN). No proxy
-  rewriting needed for them; only `/api/*` goes through the Vite dev proxy.
+  shorthand** (`constructor(public status: number)`) — declare the field
+  and assign it in the constructor body instead (see `ApiRequestError` in
+  `api/client.ts`).
+- **CORS/contract verified live**, but **no actual browser click-through
+  has been done** on this redesign — the Chrome extension wasn't connected
+  in the environment this was built in. Verification so far: `tsc`/`eslint`/
+  `pnpm build` clean, plus the exact HTTP calls this code makes were
+  exercised against a real running backend from the real `pnpm dev` origin
+  (confirmed `access-control-allow-origin` on upload, job creation, and
+  both static-media routes). Do a real visual click-through before treating
+  the UI itself as verified — the manual scenario in
+  `docs/acceptance-criteria.md` is the one to run.
 - **This is a monorepo.** `heatmaps-frontend/`, `heatmaps-backend/`, and
   `lib/` are sibling directories under one git repo (`density-methods/`).
   Don't assume this repo's root is the git root.

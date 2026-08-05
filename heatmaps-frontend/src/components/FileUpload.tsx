@@ -1,31 +1,19 @@
-import { useState } from 'react';
-import { HEATMAP_TYPES } from '../types';
-import type { HeatmapType } from '../types';
-
 interface FileUploadProps {
-  onUpload: (file: File, heatmapTypes: HeatmapType[]) => void;
+  onUpload: (file: File) => void;
   disabled?: boolean;
 }
 
 export function FileUpload({ onUpload, disabled }: FileUploadProps) {
-  const [selectedTypes, setSelectedTypes] = useState<HeatmapType[]>([]);
-
-  const toggleType = (type: HeatmapType) => {
-    setSelectedTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type],
-    );
-  };
-
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const input = e.currentTarget.elements.namedItem('video') as HTMLInputElement;
     const file = input.files?.[0];
-    if (file && selectedTypes.length > 0) onUpload(file, selectedTypes);
+    if (file) onUpload(file);
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-      <h2>Prześlij wideo do analizy</h2>
+    <form onSubmit={handleSubmit} className="flex flex-col items-center gap-4">
+      <h2 className="text-xl font-medium">Prześlij wideo do analizy</h2>
       <input
         name="video"
         type="file"
@@ -33,21 +21,11 @@ export function FileUpload({ onUpload, disabled }: FileUploadProps) {
         required
         disabled={disabled}
       />
-      <fieldset style={{ border: '1px solid #ccc', borderRadius: '4px', padding: '0.75rem 1rem' }}>
-        <legend>Typy heatmapy</legend>
-        {HEATMAP_TYPES.map(({ value, label }) => (
-          <label key={value} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-            <input
-              type="checkbox"
-              checked={selectedTypes.includes(value)}
-              onChange={() => toggleType(value)}
-              disabled={disabled}
-            />
-            {label}
-          </label>
-        ))}
-      </fieldset>
-      <button type="submit" disabled={disabled || selectedTypes.length === 0}>
+      <button
+        type="submit"
+        disabled={disabled}
+        className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
         Wyślij
       </button>
     </form>

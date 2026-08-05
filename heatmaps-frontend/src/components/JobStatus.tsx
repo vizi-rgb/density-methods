@@ -5,30 +5,21 @@ interface JobStatusProps {
 
 export function JobStatus({ progress, label = 'Przetwarzanie...' }: JobStatusProps) {
   return (
-    <div style={{ width: '100%', maxWidth: '500px', textAlign: 'center' }}>
+    <div className="w-full max-w-[500px] text-center">
       <p>{label}</p>
       <div
         role="progressbar"
         aria-valuenow={progress}
         aria-valuemin={0}
         aria-valuemax={100}
-        style={{
-          background: '#e0e0e0',
-          borderRadius: '4px',
-          overflow: 'hidden',
-          height: '20px',
-        }}
+        className="bg-gray-200 rounded overflow-hidden h-5"
       >
         <div
-          style={{
-            background: '#4caf50',
-            width: `${progress}%`,
-            height: '100%',
-            transition: 'width 0.3s ease',
-          }}
+          className="bg-green-500 h-full transition-[width] duration-300 ease-out"
+          style={{ width: `${progress}%` }}
         />
       </div>
-      <p style={{ fontSize: '0.9em', color: '#666' }}>{progress}%</p>
+      <p className="text-sm text-gray-500">{progress}%</p>
     </div>
   );
 }

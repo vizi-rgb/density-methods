@@ -20,6 +20,7 @@ export function FileUpload({ onUpload, disabled }: FileUploadProps) {
         accept="video/*"
         required
         disabled={disabled}
+        className="text-sm file:mr-4 file:inline-flex file:items-center file:justify-center file:rounded-md file:border file:border-gray-300 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
       />
       <button
         type="submit"

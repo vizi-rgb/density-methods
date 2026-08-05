@@ -1,151 +1,87 @@
-# Techniczny Plan Architektury Frontendu (Vite + HLS.js + SSE)
+# Frontend Plan — heatmaps-frontend
 
-See also: [`api-integration.md`](./api-integration.md) (backend contract, current gaps) and [`acceptance-criteria.md`](./acceptance-criteria.md) (Definition of Done + E2E scenario).
+See also: [`api-integration.md`](./api-integration.md) (backend contract) and [`acceptance-criteria.md`](./acceptance-criteria.md) (Definition of Done).
 
-## Stan Aktualny (Baseline)
+**Second-generation design.** The original plan had the user select 1+ heatmap types up front at upload time; one job rendered all of them together as HLS streams shown in tabs. The actual product need is different: upload a video once, then **incrementally add any number of independent, parameterized heatmap analyses** to it (a direction, a speed range, an exact group size), each landing as its own tile in a grid as it finishes. HLS is gone too — every video (the raw upload preview and every heatmap result) is a plain MP4, played with a plain `<video>` tag. No `hls.js`.
 
-| Element | Stan |
-|---|---|
-| Framework | Vite 8 + React 19 + TypeScript ✅ |
-| `hls.js` | ✅ zainstalowany (`hls.js 1.6.x` z wbudowanymi typami) |
-| `src/api/`, `src/components/`, `src/utils/`, `src/types/` | ✅ zaimplementowane (upload → SSE → tabbed HLS playback, zgodnie z tym dokumentem) |
-| Backend (`heatmaps-backend`) | ⚠️ tylko dokumentacja (`heatmaps-backend/docs/`), brak działającego kodu/endpointów |
-| Selekcja `heatmap_types` przy uploadzie | ✅ zaimplementowane (`FileUpload.tsx`) |
-| Recovery stanu po reloadzie strony | ✅ zaimplementowane (`App.tsx`, `GET /api/status/{job_id}`) |
+## Goal
 
----
+1. Upload a video (no options at upload time).
+2. See a small preview of the raw upload immediately.
+3. Use a persistent "add analysis" menu — pick a category (directional/speed/cluster), fill in that category's parameters, hit **Add** — to add heatmap analyses one at a time. Repeatable.
+4. Each analysis appears as its own tile in a grid below, showing its own progress and then its own player, independently of the others.
 
-## 1. Przegląd i Cel Projektu
+## Stack
 
-Celem warstwy frontendu jest dostarczenie responsywnego interfejsu użytkownika służącego do:
+Vite 8, React 19 + TypeScript ~6 (strict-ish: `noUnusedLocals`, `noUnusedParameters`, `erasableSyntaxOnly`), native `fetch`/`EventSource` (no axios, no react-query, no `hls.js`), pnpm. Styling is Tailwind v4 (`@tailwindcss/vite` plugin, no `tailwind.config.js` needed for v4) with `@sglara/cn` for conditional `className` composition — no inline `style` objects except the one genuinely dynamic value (`JobStatus`'s progress-bar width). `index.css` is just `@import "tailwindcss";`; the old template-leftover `App.css` was deleted (dead code, never referenced by a component). No router, no state management library, no UI component library.
 
-1. **Wysyłania pliku wideo** do przetwarzania przez Backend (FastAPI)
-2. **Odbierania statusu przetwarzania w czasie rzeczywistym** poprzez jednokierunkowy strumień zdarzeń **Server-Sent Events (SSE)** oparty o `EventSource`
-3. **Odtwarzania N przetworzonych wideo** — jeden na każdy wybrany typ analizy heatmapy (`directional`, `speed`, `cluster`) — przy użyciu strumieniowania HLS (`hls.js`)
-
-> **Założenie wielowyjściowe:** jeden upload może wygenerować wiele wyjściowych wideo, po jednym na wybrany typ heatmapy. Backend zwraca tablicę `outputs[]`, a frontend renderuje N odtwarzaczy (tabs lub grid). Dokładny kontrakt: [`api-integration.md`](./api-integration.md).
-
----
-
-## 2. Stos Technologiczny
-
-| Warstwa | Technologia |
-|---|---|
-| Build Tool | Vite 8 |
-| Framework | React 19 + TypeScript |
-| Odtwarzacz Wideo | `hls.js` (MSE) + natywne HLS (Safari fallback) |
-| Komunikacja Real-time | Natywny `EventSource` (SSE) |
-| Komunikacja HTTP | Natywny `fetch` API |
-| Style | CSS Modules (istniejące pliki zachowane) |
-| Manager pakietów | pnpm |
-
----
-
-## 3. Struktura Projektu (aktualna)
+## Structure
 
 ```text
 heatmaps-frontend/
 ├── docs/
-│   ├── frontend-plan.md          # Niniejsza dokumentacja
-│   ├── api-integration.md        # Kontrakt z backendem
-│   └── acceptance-criteria.md    # Definition of Done + scenariusz E2E
-├── public/
-│   └── favicon.svg
+│   ├── frontend-plan.md
+│   ├── api-integration.md
+│   └── acceptance-criteria.md
 ├── src/
 │   ├── api/
-│   │   ├── client.ts             # uploadVideo(file) → Promise<{ job_id }>
-│   │   └── sseStream.ts          # openSSEStream(jobId, callbacks) → EventSource
+│   │   ├── client.ts             # uploadVideo, createHeatmapJob, getHeatmapStatus
+│   │   └── sseStream.ts          # openHeatmapStream(jobId, ...)
 │   ├── components/
-│   │   ├── FileUpload.tsx         # Wybór i wysyłanie pliku
-│   │   ├── JobStatus.tsx          # Pasek postępu SSE (0–100%)
-│   │   ├── VideoPlayer.tsx        # Pojedynczy odtwarzacz HLS (hls.js)
-│   │   └── VideoPlayerGrid.tsx    # Grid/tabs N odtwarzaczy z labelem
+│   │   ├── FileUpload.tsx         # file input + submit, no options
+│   │   ├── VideoPreview.tsx        # raw upload playback
+│   │   ├── HeatmapMenu.tsx          # category + params + optional name + Add
+│   │   ├── HeatmapTile.tsx           # owns one job end-to-end (poll/SSE + render + edit-mode delete)
+│   │   ├── HeatmapGrid.tsx            # grid or list of HeatmapTiles, empty-state placeholder
+│   │   └── JobStatus.tsx              # progress bar, used inside HeatmapTile
 │   ├── utils/
-│   │   └── hlsLoader.ts           # initHls() z fallback do natywnego HLS
-│   ├── types/
-│   │   └── index.ts               # AppState, SSEEvent, VideoOutput
-│   ├── App.tsx                    # Orkiestracja stanów
-│   ├── main.tsx                   # Punkt wejścia
-│   ├── App.css
-│   └── index.css
+│   │   └── describeHeatmapRequest.ts   # client-side default label, mirrors backend's build_label()
+│   ├── types/index.ts             # AppState, HeatmapRequest, VideoOutput, HeatmapJobEvent, HeatmapTileData
+│   ├── App.tsx                    # state machine + sessionStorage persistence
+│   ├── main.tsx, index.css
 ├── .env.local                     # VITE_API_URL=http://localhost:8000
-├── index.html
-├── package.json
-├── tsconfig.app.json
-├── tsconfig.node.json
-└── vite.config.ts
+└── (vite/ts/eslint config)
 ```
 
----
-
-## 4. Maszyna Stanów Aplikacji
+## State machine
 
 ```
-       [ STAN: IDLE ]
-             │
-             ▼ (Użytkownik wybiera plik i klika Upload)
-       [ STAN: UPLOADING ]
-             │
-             ▼ (FastAPI zwraca job_id)
-       [ STAN: PROCESSING ] ◄── Otwarcie strumienia SSE (EventSource)
-             │                  GET /api/status/{job_id}/stream
-             │                  Strumieniowanie: 5%... 20%... 85%...
-             │
-             ▼ (SSE event: status == "completed", outputs[])
-             │  → EventSource.close()
-       [ STAN: READY_TO_PLAY ]
-             │
-             ▼ (Inicjalizacja N instancji hls.js — po jednej na output)
-       [ Odtwarzanie N wideo (tabs / grid) ]
-
-       Każdy etap może przejść do: [ STAN: ERROR ]
+[ IDLE ] --(choose file, submit)--> [ UPLOADING ] --(video_id + video_url)--> [ READY ]
+   ^                                       |
+   |                                  (upload fails)
+   |                                       v
+   +------------------------------- [ ERROR ] (upload failure only)
 ```
 
-### Przejścia stanów
+`READY` holds `{ videoId, videoUrl, tiles: {jobId, label}[] }`, persisted as one JSON blob in `sessionStorage` (key `heatmaps.session`) so a page reload restores it — each `HeatmapTile` independently re-syncs its own job state on remount (fetch snapshot, then poll or SSE — see `HeatmapTile.tsx` below). There's no global "processing" state blocking the UI and no per-tile error is global — a failed analysis shows an error inside its own tile; everything else keeps working.
 
-| Stan | Trigger wejścia | Widoczne elementy UI |
-|---|---|---|
-| `IDLE` | Start aplikacji / reset | `FileUpload` |
-| `UPLOADING` | Klik "Upload" | Spinner + info o wysyłaniu |
-| `PROCESSING` | `job_id` zwrócony z API | `JobStatus` (SSE progress bar) |
-| `READY_TO_PLAY` | SSE `status == "completed"` | `VideoPlayerGrid` (N odtwarzaczy) |
-| `ERROR` | Dowolny błąd (upload/SSE/HLS) | Komunikat błędu + przycisk reset |
+"Add" (`HeatmapMenu` → `App.handleAddHeatmap`) doesn't change `appState` at all — it stays in `READY`, just appends a new tile. The menu is never consumed/hidden after use. `App.tsx` also owns two view-only toggles that apply to the whole tile collection: `layout` (`'grid' | 'list'`, passed to `HeatmapGrid`) and `editMode` (`'normal' | 'edit'`, passed down to `HeatmapGrid` → `HeatmapTile`, with `App.handleDeleteTile` as the removal callback).
 
-> Po odświeżeniu strony w trakcie `PROCESSING`/`READY_TO_PLAY`, aplikacja odtwarza stan przez `GET /api/status/{job_id}` (persystowane `job_id` w `sessionStorage`) zamiast wracać do `IDLE`.
+## Components
 
----
+- **`FileUpload.tsx`** — `<input type="file" accept="video/*">` + submit. No heatmap-type selection here anymore — that moved to `HeatmapMenu`, per-analysis, after upload.
+- **`VideoPreview.tsx`** — `<video controls src={videoUrl}>` for the raw upload, unmodified by the backend.
+- **`HeatmapMenu.tsx`** — an optional free-text "Nazwa" input, a radio group for category (directional/speed/cluster), a conditional sub-form per category, and an Add button:
+  - Directional: radio group of `all/static/up/down/left/right`, exactly one.
+  - Speed: two optional number inputs (min/max, km/h) — either, both, or neither.
+  - Cluster: one number input, group size (integer ≥ 2 — matches the backend's DBSCAN-based exact-match semantics).
+  - Calls `onAdd(request: HeatmapRequest, customName?: string)` on submit — the trimmed name field, or `undefined` if left blank; stays mounted and usable for the next analysis.
+- **`HeatmapTile.tsx`** — given `{jobId, label, editMode, onDelete}`: fetches a snapshot on mount (`getHeatmapStatus`) and renders itself: loading → progress bar → `<video>` or an inline error. While a job is `queued`, it re-polls `getHeatmapStatus` on a 2s timer instead of opening an `EventSource` — an `EventSource` is only opened once the job reaches `processing`. This matters because the backend runs a single sequential worker, so several tiles can sit `queued` at once; if each held its own long-lived SSE connection immediately, the browser's per-origin HTTP/1.1 connection cap (shared with the video preview) could saturate and stall even the `fetch()` that creates the *next* job — the fix bounds concurrent open connections to roughly "1 processing job + short polling bursts" regardless of how many analyses are queued. In `editMode === 'edit'`, clicking the tile calls `onDelete(jobId)` instead of any normal interaction (hover styling flags this). Fully self-contained; `App.tsx` never touches per-job fetch/SSE state directly, only the delete callback.
+- **`HeatmapGrid.tsx`** — `layout === 'grid'` renders a CSS grid (`repeat(auto-fill, minmax(360px, 1fr))`); `layout === 'list'` renders a stacked flex column. Passes `editMode`/`onDelete` through to each `HeatmapTile`; renders an empty-state message when there are no tiles yet.
+- **`JobStatus.tsx`** — the progress-bar bit, reused inside `HeatmapTile`.
+- **`describeHeatmapRequest.ts`** — builds a tile's *default* label client-side, immediately on Add, from the exact request object — mirrors the backend's `build_label()` (`app/domain/job.py`) so the tile shows something meaningful (`"Directional — right"`) from the start rather than a generic "Processing…" placeholder. Only used when the menu's custom name field was left blank (`App.handleAddHeatmap` does `customName ?? describeHeatmapRequest(request)`). The label the backend returns in `output.label` on completion is the auto-generated one — irrelevant when a custom name was given, since the tile already has its label and never re-reads `output.label`.
 
-## 5. Plan Implementacji (etapy 1-6, zaimplementowane)
+## Edit mode
 
-### Etap 1 — Zależności i konfiguracja ✅
+A header toggle button (`App.tsx`) switches `editMode` between `'normal'` and `'edit'`. In `'edit'`, hovering a tile highlights it (red border/background) and clicking it removes that analysis from `session.tiles` via `App.handleDeleteTile` — client-side only: it does not cancel the backend job or delete its output, it just stops the frontend from tracking/displaying it. `sessionStorage` is updated immediately so the removal survives a reload.
+
+## Commands
 
 ```bash
-pnpm add hls.js
-pnpm add -D @types/hls.js
+pnpm install
+pnpm dev       # http://localhost:5173, proxies /api to http://localhost:8000 (vite.config.ts)
+pnpm build     # tsc -b && vite build
+pnpm lint      # eslint .
 ```
 
-- `.env.local`: `VITE_API_URL=http://localhost:8000`
-- `vite.config.ts` proxy: `'/api': 'http://localhost:8000'`
-
-### Etap 2 — Typy współdzielone (`src/types/index.ts`) ✅
-
-Patrz [`api-integration.md`](./api-integration.md) dla aktualnego kształtu `SSEEvent`/`VideoOutput` i brakującego pola `heatmap_types`.
-
-### Etap 3 — Warstwa API (`src/api/client.ts`, `src/api/sseStream.ts`) ✅
-
-Patrz [`api-integration.md`](./api-integration.md) dla dokładnych żądań/odpowiedzi.
-
-### Etap 4 — Komponenty UI ✅
-
-- **`FileUpload.tsx`** — `<input type="file" accept="video/*">` + checkbox group dla `heatmap_types` (min. 1 wybór wymagany) + button, callback `onUpload(file, heatmapTypes)`.
-- **`JobStatus.tsx`** — pasek postępu z `progress: number` (0–100) + tekst statusu
-- **`VideoPlayer.tsx`** — pojedynczy `<video>` z `ref` + inicjalizacja hls.js przez `hlsLoader`; przyjmuje `{ label, manifestUrl }`
-- **`VideoPlayerGrid.tsx`** — renderuje `outputs.map(o => <VideoPlayer>)` w układzie tabs lub grid (pojedynczy output = bez tabs); niszczy wszystkie instancje `Hls` przy unmount
-
-### Etap 5 — HLS Loader (`src/utils/hlsLoader.ts`) ✅
-
-`Hls.isSupported()` → `hls.loadSource`/`attachMedia`; inaczej natywne `canPlayType('application/vnd.apple.mpegurl')` (Safari); inaczej rzuca błąd.
-
-### Etap 6 — Orkiestracja w `App.tsx` ✅
-
-`useState` dla `appState`, `progress`, `outputs`, `error`. Przepływ: `uploadVideo(file, heatmapTypes)` → persystencja `job_id` w `sessionStorage` → `connectStream()` (`openSSEStream()`) → na `completed`: zamknięcie SSE, zapis `outputs`, przejście do `READY_TO_PLAY`. Dodatkowy `useEffect` na mount odczytuje persystowane `job_id` i wywołuje `GET /api/status/{job_id}` (`getJobStatus`), odtwarzając stan (i ponownie łącząc SSE, jeśli job nie jest jeszcze zakończony). `useEffect` niszczy `EventSource` przy unmount/reset.
+No test runner is set up. `pnpm build`+`pnpm lint` are the only automated checks — manually exercise upload → preview → add each of the three analysis types → tiles complete and play, for anything touching `App.tsx` or the API layer.

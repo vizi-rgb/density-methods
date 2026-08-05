@@ -1,78 +1,73 @@
 # API Integration — heatmaps-frontend
 
-Companion to `frontend-plan.md`. This is the frontend's view of the backend contract defined in `heatmaps-backend/docs/api-contract.md` — kept in lockstep with it; if you change one, change the other.
+Companion to `frontend-plan.md`. The frontend's view of the backend contract in `heatmaps-backend/docs/api-contract.md` — kept in lockstep with it; if you change one, change the other.
 
-Backend has no running code yet (docs only), so none of this has been integration-tested against a live server — the frontend implementation below matches the documented contract but has only been verified via `tsc -b`/`eslint`/`vite build` and code review.
+This is a breaking change from an earlier version of both this doc and the actual frontend code — upload no longer takes a type selection; a video is uploaded once, then any number of individually parameterized heatmap jobs are created against it. HLS is gone — every video is a plain MP4.
 
-## `POST /api/upload`
-
-**Implemented** (`src/api/client.ts`, `src/components/FileUpload.tsx`):
+## `POST /api/videos`
 
 ```typescript
 const form = new FormData();
 form.append('file', file);
-heatmapTypes.forEach((type) => form.append('heatmap_types', type));
-fetch(`${VITE_API_URL}/api/upload`, { method: 'POST', body: form });
-// -> { job_id: string }
+fetch(`${VITE_API_URL}/api/videos`, { method: 'POST', body: form });
+// -> 202 { video_id: string, video_url: string }
 ```
 
-`FileUpload.tsx` renders a checkbox per entry in `HEATMAP_TYPES` (`directional`/`speed`/`cluster`, from `src/types/index.ts`) and disables submit until ≥1 is checked and a file is chosen, matching the backend's "at least one, subset of {directional, speed, cluster}" requirement. `roi`/`tripwire` are intentionally not offered — no geometry-input UI exists.
+`video_url` is the raw upload, served as-is — used directly for the preview `<video>`. No job is created by this call. Implemented in `src/api/client.ts`'s `uploadVideo`.
 
-**Error handling**: `uploadVideo` throws `UploadError` (has `.status` + a `.message` derived from the response body's `{"error":{"message"}}` if present, else a status-specific Polish fallback for `400`/`413`/`415`/`422`/other). `App.tsx` renders `err.message` directly in the `ERROR` state.
+**Errors**: `400` empty file, `415` not a recognized video (magic-byte sniff), `413` over the size limit. Surfaced via `ApiRequestError` (has `.status` + a `.message` parsed from the response body's `{"error":{"message"}}`, or a Polish status-specific fallback).
 
-**Response `202`:** `{ "job_id": "string" }` — handled; persisted to `sessionStorage` (`heatmaps.jobId`) immediately after a successful upload, for reload recovery (see below).
-
-## `GET /api/status/{job_id}` (snapshot, for reconnect)
-
-**Implemented** (`src/api/client.ts` `getJobStatus`, `src/App.tsx` mount effect).
-
-On mount, `App.tsx` checks `sessionStorage` for a persisted `job_id`. If present, it calls `getJobStatus(jobId)`:
-- `completed` → restores `outputs`, jumps straight to `READY_TO_PLAY`.
-- `failed` → clears the stored id, shows the error.
-- otherwise (`queued`/`processing`) → restores `progress`, sets `PROCESSING`, and reopens the SSE stream via `connectStream(jobId)` to keep receiving live updates.
-- A failed lookup (e.g. `404` — job expired/unknown) clears the stored id and silently falls back to `IDLE`.
-
-The stored `job_id` is cleared on `reset()` and on a terminal `failed` event/snapshot; it is intentionally kept through `completed` so a reload while `READY_TO_PLAY` still restores playback.
-
-## `GET /api/status/{job_id}/stream` (SSE)
-
-**Implemented** (`src/api/sseStream.ts`, `App.tsx` `connectStream`):
+## `POST /api/videos/{video_id}/heatmaps`
 
 ```typescript
-new EventSource(`${VITE_API_URL}/api/status/${jobId}/stream`)
+fetch(`${VITE_API_URL}/api/videos/${videoId}/heatmaps`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(request), // HeatmapRequest — see types/index.ts
+});
+// -> 202 { job_id: string }
 ```
 
-Event payloads handled:
-
-```
-data: {"status": "queued"}
-
-data: {"status": "processing", "progress": 45}
-
-data: {
-  "status": "completed",
-  "progress": 100,
-  "outputs": [
-    { "type": "directional", "label": "Directional flow", "manifest_url": "http://localhost:8000/media/{job_id}/directional/stream.m3u8" },
-    { "type": "speed", "label": "Speed", "manifest_url": "http://localhost:8000/media/{job_id}/speed/stream.m3u8" }
-  ]
-}
-
-data: {"status": "failed", "error": "opis błędu"}
+`request` is one of:
+```typescript
+{ type: 'directional', direction: 'all'|'static'|'up'|'down'|'left'|'right' }
+{ type: 'speed', min_speed?: number, max_speed?: number }
+{ type: 'cluster', group_size: number }  // integer >= 2, EXACT match server-side, not "N or more"
 ```
 
-`SSEEvent.status` includes `'queued'` and `progress` is optional (`queued` payload has no `progress` field) — `types/index.ts` reflects this. `outputs` is an array, one entry per **selected** heatmap type. `VideoOutput` now carries `type: HeatmapType` alongside `label`/`manifest_url`.
+Implemented in `src/api/client.ts`'s `createHeatmapJob`. **Errors**: `404 video_not_found` for an unknown `video_id`, `400 invalid_request` for any per-type validation failure (bad `direction`, `group_size < 2`, `min_speed > max_speed`) — there's no separate `422` tier, everything body-validation-related is `400`.
 
-`manifest_url` is an absolute URL on the backend's own host (local-disk storage served via `StaticFiles` in v1) — passed straight to `hlsLoader`/`hls.js`. Backend CORS must allow the frontend origin for both `/api/*` and `/media/*`.
+## `GET /api/heatmaps/{job_id}` (snapshot, for reconnect) & `GET /api/heatmaps/{job_id}/stream` (SSE)
+
+```typescript
+fetch(`${VITE_API_URL}/api/heatmaps/${jobId}`);              // getHeatmapStatus
+new EventSource(`${VITE_API_URL}/api/heatmaps/${jobId}/stream`); // openHeatmapStream
+```
+
+Event/response payloads:
+
+```
+{"status": "queued"}
+{"status": "processing", "progress": 45}
+{"status": "completed", "progress": 100, "output": {"type": "directional", "label": "Directional — right", "video_url": "http://.../media/jobs/{job_id}/output.mp4"}}
+{"status": "failed", "error": "..."}
+```
+
+`output` is a **single object**, not an array — one job always produces exactly one result now. `HeatmapTile` (see `frontend-plan.md`) owns this whole lifecycle per job: snapshot on mount, then it either polls or opens SSE depending on status, and renders accordingly. There's no reconnect logic in `App.tsx` itself — each tile is independently responsible for its own job, and `App.tsx` only needs to remember `{jobId, label}` pairs (persisted in `sessionStorage`) for tiles to re-attach to on reload.
+
+**Client-side connection strategy (not a contract change, but load-bearing for correctness):** `HeatmapTile` does **not** open an `EventSource` for a `queued` job — it re-fetches `GET /api/heatmaps/{job_id}` every 2s instead, and only switches to the SSE stream once a snapshot comes back `processing`. Reason: the backend's `GET .../stream` connection stays open for a job's entire queued+processing lifetime (`_sse_events` only returns on `completed`/`failed`), and the backend deployment runs a single sequential `rq worker --worker-class SimpleWorker`, so several jobs can sit `queued` simultaneously for a while. If every queued tile held its own SSE connection immediately, enough of them (plus the video-preview connection, same origin) would exhaust the browser's per-origin HTTP/1.1 connection pool — and the *next* `fetch()` call, including the `POST .../heatmaps` that creates a new job, would stall in the browser's network queue until a connection freed up. Practically: adding a 4th+ analysis while 3 others were still in flight meant the new tile never appeared until an earlier one finished. Polling while `queued` keeps connections short-lived; at most one job is ever `processing` at a time given the single-worker backend, so at most one tile ever holds a long-lived SSE connection.
+
+`video_url` (from both this and `POST /api/videos`) is an absolute URL on the backend's own host — passed straight to a `<video>` tag, nothing HLS-specific needed. Backend CORS must allow the frontend origin for both `/api/*` and `/media/*` — verified live against a running backend + `pnpm dev` (real `Origin: http://localhost:5173` header, `access-control-allow-origin` present on all three: upload, job creation, and both static-media routes).
 
 ## `GET /health`
 
-Not used by the frontend — no action needed for the core flow.
+Not used by the frontend.
 
-## Implementation status
+## Current implementation status
 
-- [x] `heatmap_types` selection UI + wiring through `FileUpload.tsx` → `client.ts` → upload request.
-- [x] Distinguish upload error codes (`400`/`413`/`415`/`422`) with specific user-facing messages.
-- [x] `VideoOutput.type` field added to `types/index.ts`.
-- [x] Reconnect/reload recovery via `GET /api/status/{job_id}` + persisted `job_id`.
-- [ ] Live E2E verification against a real backend — not possible yet, `heatmaps-backend` has no running endpoints (docs only). Re-verify once the backend is implemented.
+- [x] Upload has no type selection (moved to per-analysis `HeatmapMenu`).
+- [x] `HeatmapRequest` discriminated union matches the backend's schema exactly, including `group_size`'s exact-match semantics.
+- [x] Singular `output` (not array) consumed correctly.
+- [x] Reload recovery — verified via `sessionStorage` persistence design; each tile re-syncs independently.
+- [x] CORS verified live against a real running backend from the actual `pnpm dev` origin (upload, job creation, video preview, job output).
+- [ ] Full visual browser click-through (upload → add all 3 types → tiles render and play) — **not done**. The Chrome extension wasn't connected in the environment this was built in; verification instead covered `tsc`/`eslint`/`pnpm build` (all clean) plus the exact HTTP contract exercised live with matching CORS headers. Do a real click-through before considering this fully done.

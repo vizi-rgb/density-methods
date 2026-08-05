@@ -1,41 +1,46 @@
 # Acceptance Criteria — heatmaps-frontend
 
-Companion to `frontend-plan.md` / `api-integration.md`. Checklist for the implemented flow.
+Companion to `frontend-plan.md` / `api-integration.md`. Checklist for the incremental-per-heatmap / MP4 redesign.
 
 ## Functional
 
-- [x] Użytkownik może wybrać plik wideo i kliknąć "Upload".
-- [x] Użytkownik może wybrać co najmniej jeden typ heatmapy (`directional`/`speed`/`cluster`) przed wysłaniem — submit zablokowany, gdy nic nie wybrano.
-- [x] Po wysłaniu aplikacja przechodzi do stanu `PROCESSING` z widocznym paskiem postępu.
-- [x] Pasek postępu aktualizuje się w czasie rzeczywistym przez SSE (0% → 100%), włącznie z pośrednim stanem `queued`.
-- [x] Po otrzymaniu `status == "completed"` SSE zostaje zamknięty (`EventSource.close()`).
-- [x] Wszystkie wideo z `outputs[]` są renderowane — każde w osobnym odtwarzaczu z labelem.
-- [x] Gdy `outputs` ma 1 element — wyświetlany jest pojedynczy odtwarzacz (brak niepotrzebnych tabs).
-- [x] Przeglądarki z natywnym HLS (Safari) działają bez hls.js.
-- [x] Każdy błąd (upload, SSE, HLS) wyświetla komunikat + opcję reset do `IDLE`.
-- [x] Błędy uploadu (`400`/`413`/`415`/`422`) wyświetlają konkretny komunikat (z body odpowiedzi lub status-specific fallback) zamiast surowego tekstu odpowiedzi.
-- [x] Odświeżenie strony w trakcie `PROCESSING`/`READY_TO_PLAY` odzyskuje stan przez `GET /api/status/{job_id}` (persystowane `job_id` w `sessionStorage`) zamiast wracać do `IDLE`.
+- [x] Upload accepts a file, no other input required.
+- [x] On upload success, a preview of the raw video appears immediately (`<video src={video_url}>`, no processing wait).
+- [x] The "add analysis" menu is available immediately after upload and stays available — not consumed after one use.
+- [x] Directional: exactly one of the 6 directions selectable; Speed: min/max both optional, independently; Cluster: integer group size ≥ 2, submit disabled below 2.
+- [x] Each "Add" creates one new independent job and one new tile — existing tiles are unaffected.
+- [x] Each tile shows its own progress (`queued`/`processing` with %) and, on completion, its own player — independent of every other tile's state.
+- [x] A failed analysis shows an inline error in its own tile; other tiles keep working.
+- [x] Grid shows an empty-state message when there are no tiles yet, and lays out multiple tiles in a responsive grid (not tabs).
+- [ ] Reload mid-processing restores the video preview and every tile, each resuming its own progress — implemented (sessionStorage + per-tile self-sync) but **not visually verified** (no browser available in the build environment).
+- [x] Upload failure shows an error with a reset option (`ERROR` state, global — this is the one thing still global, since without a video there's nothing else to show).
+- [x] The add-analysis menu has an optional "Nazwa" field; when filled, its trimmed value becomes the tile's label instead of the auto-generated `describeHeatmapRequest` one; blank/whitespace-only falls back to the default naming — `tsc -b`/`eslint` clean, not yet visually clicked through.
+- [x] A layout toggle switches all tiles between a responsive grid and a single-column stacked list without losing any tile's state.
+- [x] An edit-mode toggle changes tile-click behavior: in edit mode, clicking a tile removes it from the session (client-side only — the underlying job/output on the backend is untouched); normal mode is unaffected.
+- [x] Queued tiles no longer hold an open SSE connection — they poll `getHeatmapStatus` every 2s and only open an `EventSource` once a job reaches `processing`. Fixes a real bug: adding more analyses than the browser's per-origin connection pool had room for meant the 4th+ tile's own creation request stalled until an earlier tile's SSE connection closed (root-caused via investigation of both the backend, which was confirmed non-blocking, and the frontend's connection usage).
 
-## Niefunkcjonalne
+## Non-functional
 
-- [x] Brak wycieków pamięci — `EventSource` i wszystkie instancje `Hls` (jedna per output) są niszczone przy unmount/reset.
-- [x] URL backendu tylko przez `VITE_API_URL` (brak hardcoded URL).
-- [x] `pnpm build` kończy się bez błędów.
-- [x] `tsc -b` bez błędów typów (TypeScript strict, `erasableSyntaxOnly`).
-- [x] `pnpm lint` czysty.
-- [ ] Zweryfikowane end-to-end wobec działającego backendu — **niemożliwe jeszcze**, `heatmaps-backend` nie ma zaimplementowanych endpointów (tylko dokumentacja). Do ponownej weryfikacji, gdy backend zacznie działać.
+- [x] No `hls.js` anywhere — removed from `package.json`, `hlsLoader.ts` deleted. Bundle size dropped from ~707KB to ~202KB as a direct result.
+- [x] `EventSource` instances are closed on tile unmount and on terminal status (completed/failed) — each `HeatmapTile` manages its own via a cleanup effect. Not opened at all until the job is `processing` — see the queued-poll fix above.
+- [x] Backend URL only via `VITE_API_URL`, no hardcoded URLs.
+- [x] `pnpm build` clean, `pnpm lint` clean (`tsc -b` strict mode incl. `erasableSyntaxOnly`; had to fix one `react-hooks/set-state-in-effect` lint error by switching session restore to a `useState` lazy initializer instead of a mount effect).
+- [x] CORS verified live end-to-end against a real backend from the actual dev-server origin (see `api-integration.md`).
+- [ ] Full visual browser click-through — not done, Chrome extension unavailable in the build environment. `tsc`/`eslint`/`pnpm build` clean plus a live HTTP-contract check stand in for it; do a real click-through before treating this as fully verified.
 
-## Scenariusz E2E (manualny, do wykonania przeciwko realnemu backendowi)
+## Scenario (manual, do this before calling it done)
 
-| Krok | Akcja | Oczekiwany wynik |
+| Step | Action | Expected |
 |---|---|---|
-| 1 | Otwarcie aplikacji | Formularz wyboru pliku + checkboxy typów heatmapy widoczne |
-| 2 | Wybór pliku, zaznaczenie ≥1 typu, klik Upload | Spinner / info o wysyłaniu |
-| 3 | Backend zwraca `job_id` | Pasek postępu pojawia się, `job_id` zapisane w `sessionStorage` |
-| 4 | SSE: `{"status":"queued"}` → `{"status":"processing","progress":50}` | Pasek pokazuje 50% |
-| 5 | Odświeżenie strony w trakcie kroku 4 | `GET /api/status/{job_id}` odtwarza stan `PROCESSING` z aktualnym progressem, SSE ponownie połączone — bez powrotu do `IDLE` |
-| 6 | SSE: `{"status":"completed","progress":100,"outputs":[...]}` | Grid/tabs N odtwarzaczy pojawia się (N = liczba wybranych typów) |
-| 7 | Każde wideo ładuje się i odtwarza | Płynne odtwarzanie HLS dla każdego outputu |
-| 8 | Odświeżenie strony w trakcie kroku 7 | Stan `READY_TO_PLAY` odtworzony z `GET /api/status/{job_id}`, odtwarzacze wracają |
-| 9 | Klik "Reset" | Powrót do stanu `IDLE`, `job_id` usunięte z `sessionStorage` |
-| 10 | Upload pliku niebędącego wideo / za dużego pliku / bez zaznaczonego typu | Komunikat błędu odpowiadający kodowi (`415`/`413`/`422`) |
+| 1 | Open the app | File picker visible, nothing else |
+| 2 | Choose a video, submit | Brief "wysyłanie" state, then preview appears |
+| 3 | Add menu: pick Directional, "right", Add | New tile appears showing "Directional — right" with a progress bar at 0% |
+| 4 | Wait | Progress increases; tile switches to a playable video on completion |
+| 5 | Add menu: pick Speed, leave both bounds empty, Add | Second tile appears alongside the first, independent progress |
+| 6 | Add menu: pick Cluster, group size 2, Add | Third tile appears; independent progress |
+| 7 | Reload the page mid-processing on one of them | Preview + all three tiles restored, each showing correct current state |
+| 8 | Add a 4th and 5th analysis while the first ones are still queued/processing | Both new tiles appear immediately with a queued progress bar — do not wait for earlier tiles to finish |
+| 9 | Type a name in "Nazwa" before Add | New tile shows that name instead of the auto-generated label |
+| 10 | Click the layout toggle | Tiles switch from grid to a stacked list, and back on a second click |
+| 11 | Click the edit-mode toggle, then click a tile | That tile disappears from the grid/list; the others are unaffected |
+| 12 | Click "Nowe wideo" | Back to the file picker, session cleared |

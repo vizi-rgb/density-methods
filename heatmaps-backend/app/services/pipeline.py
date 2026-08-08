@@ -228,10 +228,13 @@ def run(
     momentum = MomentumTracker(
         metadata.fps, settings.momentum_buffer_size, max_lost_frames, camera_world_mapper
     )
+    visualizer_override = heatmap_request.get("visualizer")
     visualizer = HeatmapVisualizer(
-        fixed_max=settings.heatmap_fixed_max,
-        alpha=settings.heatmap_alpha,
-        sigma=settings.heatmap_sigma,
+        fixed_max=(
+            visualizer_override["fixed_max"] if visualizer_override else settings.heatmap_fixed_max
+        ),
+        alpha=visualizer_override["alpha"] if visualizer_override else settings.heatmap_alpha,
+        sigma=visualizer_override["sigma"] if visualizer_override else settings.heatmap_sigma,
     )
 
     for raw_prediction in raw_predictions:

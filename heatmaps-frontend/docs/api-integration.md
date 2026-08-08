@@ -30,10 +30,19 @@ fetch(`${VITE_API_URL}/api/videos/${videoId}/heatmaps`, {
 
 `request` is one of:
 ```typescript
-{ type: 'directional', direction: 'all'|'static'|'up'|'down'|'left'|'right' }
-{ type: 'speed', min_speed?: number, max_speed?: number }
-{ type: 'cluster', group_size: number }  // integer >= 2, EXACT match server-side, not "N or more"
+{ type: 'directional', direction: 'all'|'static'|'up'|'down'|'left'|'right', visualizer?: HeatmapVisualizerRequest }
+{ type: 'speed', min_speed?: number, max_speed?: number, visualizer?: HeatmapVisualizerRequest }
+{ type: 'cluster', group_size: number, visualizer?: HeatmapVisualizerRequest }  // integer >= 2, EXACT match server-side, not "N or more"
 ```
+```typescript
+interface HeatmapVisualizerRequest {
+  fixed_max: number; // >= 0
+  alpha: number;      // 0-1
+  sigma: number;       // >= 0
+}
+```
+
+`visualizer` is optional on all three types and, per the backend contract, all-or-nothing — there's no way to override just `alpha` and default `fixed_max`/`sigma`. `HeatmapMenu` (see `frontend-plan.md`) enforces this client-side: Add is disabled unless 0 or 3 of the three fields are filled. Omitting `visualizer` entirely makes the backend use its configured defaults (`heatmap_fixed_max`/`heatmap_alpha`/`heatmap_sigma`, see `heatmaps-backend/docs/api-contract.md`).
 
 Implemented in `src/api/client.ts`'s `createHeatmapJob`. **Errors**: `404 video_not_found` for an unknown `video_id`, `400 invalid_request` for any per-type validation failure (bad `direction`, `group_size < 2`, `min_speed > max_speed`) — there's no separate `422` tier, everything body-validation-related is `400`.
 
@@ -68,6 +77,7 @@ Not used by the frontend.
 - [x] Upload has no type selection (moved to per-analysis `HeatmapMenu`).
 - [x] `HeatmapRequest` discriminated union matches the backend's schema exactly, including `group_size`'s exact-match semantics.
 - [x] Singular `output` (not array) consumed correctly.
+- [x] Optional `visualizer` field sent when the menu's three fields are all filled, omitted otherwise — client-side all-or-nothing validation matches the backend's requirement.
 - [x] Reload recovery — verified via `sessionStorage` persistence design; each tile re-syncs independently.
 - [x] CORS verified live against a real running backend from the actual `pnpm dev` origin (upload, job creation, video preview, job output).
 - [ ] Full visual browser click-through (upload → add all 3 types → tiles render and play) — **not done**. The Chrome extension wasn't connected in the environment this was built in; verification instead covered `tsc`/`eslint`/`pnpm build` (all clean) plus the exact HTTP contract exercised live with matching CORS headers. Do a real click-through before considering this fully done.

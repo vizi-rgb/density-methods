@@ -48,6 +48,20 @@ Creates one heatmap-analysis job against a previously uploaded video. JSON body,
 | `speed` | `min_speed`, `max_speed`: optional numbers (km/h) | Either or both may be omitted (no lower/upper bound). `min_speed > max_speed` (when both given) is rejected. |
 | `cluster` | `group_size`: integer ≥ 2 | Renders groups of **exactly** this many people (not "N or more") — matches `lib`'s DBSCAN output, which buckets by exact cluster size. `1` is rejected (DBSCAN's `min_samples=2` means no such bucket can exist). |
 
+All three types also accept an optional `visualizer` object — rendering tuning knobs, unrelated to which heatmap type/params are selected:
+
+```json
+{ "type": "directional", "direction": "right", "visualizer": { "fixed_max": 1.0, "alpha": 0.9, "sigma": 5.0 } }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `fixed_max` | number ≥ 0 | Upper bound the heatmap's color scale is normalized against. |
+| `alpha` | number, 0–1 | Overlay opacity blended onto the source frame. |
+| `sigma` | number ≥ 0 | Gaussian blur radius applied to the density map before rendering. |
+
+All three fields are required together — there's no way to override just one and default the others. Omit `visualizer` entirely to use the server's configured defaults (`heatmap_fixed_max`/`heatmap_alpha`/`heatmap_sigma` in `app/config.py`, currently `3.0`/`0.5`/`25.0`).
+
 **Response `202 Accepted`:** `{ "job_id": "..." }`
 
 **Error responses:** `404` (`video_not_found`) if `video_id` doesn't exist, `400` (`invalid_request`) for any of the per-type validation above.

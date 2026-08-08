@@ -18,6 +18,7 @@ Companion to `frontend-plan.md` / `api-integration.md`. Checklist for the increm
 - [x] A layout toggle switches all tiles between a responsive grid and a single-column stacked list without losing any tile's state.
 - [x] An edit-mode toggle changes tile-click behavior: in edit mode, clicking a tile removes it from the session (client-side only — the underlying job/output on the backend is untouched); normal mode is unaffected.
 - [x] Queued tiles no longer hold an open SSE connection — they poll `getHeatmapStatus` every 2s and only open an `EventSource` once a job reaches `processing`. Fixes a real bug: adding more analyses than the browser's per-origin connection pool had room for meant the 4th+ tile's own creation request stalled until an earlier tile's SSE connection closed (root-caused via investigation of both the backend, which was confirmed non-blocking, and the frontend's connection usage).
+- [x] The add-analysis menu has an optional "Ustawienia wizualizacji" section (`fixed_max`/`alpha`/`sigma`), available for all three categories. All-or-nothing: 0 filled → `visualizer` omitted from the request (backend default applies); 3 filled → sent as an override; 1–2 filled → Add is disabled with an inline message. `tsc -b`/`eslint` clean, not yet visually clicked through.
 
 ## Non-functional
 
@@ -43,4 +44,6 @@ Companion to `frontend-plan.md` / `api-integration.md`. Checklist for the increm
 | 9 | Type a name in "Nazwa" before Add | New tile shows that name instead of the auto-generated label |
 | 10 | Click the layout toggle | Tiles switch from grid to a stacked list, and back on a second click |
 | 11 | Click the edit-mode toggle, then click a tile | That tile disappears from the grid/list; the others are unaffected |
-| 12 | Click "Nowe wideo" | Back to the file picker, session cleared |
+| 12 | Fill only "Fixed max" in the visualizer section, leave Alpha/Sigma blank | Add is disabled, inline error shown |
+| 13 | Fill all three visualizer fields, Add | New tile created (request includes `visualizer`); no client-side error |
+| 14 | Click "Nowe wideo" | Back to the file picker, session cleared |

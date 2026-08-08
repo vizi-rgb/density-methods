@@ -53,6 +53,8 @@ One video decode + YOLO tracking pass per job, feeding exactly **one** heatmap t
 3. A single track object built from the request: `_DirectionalTrack(direction)`, `_SpeedTrack(min_speed, max_speed)`, or `_ClusterTrack(group_size)` — each just wraps the matching `lib` builder and exposes `.frame()` returning the one relevant 2D array (fixed key for directional/speed, exact-match dynamic key for cluster).
 4. `HeatmapVisualizer.draw(track.frame(), frame)` → one BGR overlay `np.ndarray` per input frame, yielded directly (no dict of types, no per-frame file I/O).
 
+`HeatmapVisualizer(fixed_max, alpha, sigma)` itself is constructed once per job from an optional per-request `visualizer` object (`HeatmapVisualizerRequest` in `app/api/schemas.py`, same three fields, all required together) if the request supplied one, else from `Settings.heatmap_fixed_max/heatmap_alpha/heatmap_sigma` — added later than the rest of this redesign, once the schema field existed but nothing read it yet.
+
 ## MP4 encoding (`services/mp4_encoder.py`)
 
 One `ffmpeg` subprocess per job, frames piped into `stdin` as `rawvideo` (`bgr24`) as they're produced:

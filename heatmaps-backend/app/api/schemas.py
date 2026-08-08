@@ -30,15 +30,23 @@ class HealthResponse(BaseModel):
 Direction = Literal["all", "static", "up", "down", "left", "right"]
 
 
+class HeatmapVisualizerRequest(BaseModel):
+    fixed_max: float = Field(ge=0)
+    alpha: float = Field(ge=0, le=1)
+    sigma: float = Field(ge=0)
+
+
 class DirectionalHeatmapRequest(BaseModel):
     type: Literal["directional"]
     direction: Direction
+    visualizer: HeatmapVisualizerRequest | None = None
 
 
 class SpeedHeatmapRequest(BaseModel):
     type: Literal["speed"]
     min_speed: float | None = Field(default=None, ge=0)
     max_speed: float | None = Field(default=None, ge=0)
+    visualizer: HeatmapVisualizerRequest | None = None
 
     @model_validator(mode="after")
     def _check_bounds(self) -> "SpeedHeatmapRequest":
@@ -56,6 +64,7 @@ class ClusterHeatmapRequest(BaseModel):
     # DBSCAN's min_samples=2 (lib/core/heatmap/clusters/cluster_heatmap.py)
     # means a "cluster" of 1 person doesn't exist in the underlying data.
     group_size: int = Field(ge=2)
+    visualizer: HeatmapVisualizerRequest | None = None
 
 
 HeatmapRequest = Annotated[

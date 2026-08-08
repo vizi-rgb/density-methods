@@ -10,7 +10,8 @@ const CATEGORY_LABELS: Record<Category, string> = {
   cluster: 'Grupy',
 };
 
-const inputClasses = 'border border-gray-300 rounded px-2 py-1';
+const inputClasses = 'border border-gray-300 rounded px-2 py-1 min-w-24';
+const visualizerInputClasses = 'border border-gray-300 rounded px-2 py-1 w-full min-w-0';
 
 interface HeatmapMenuProps {
   onAdd: (request: HeatmapRequest, customName?: string) => void;
@@ -23,15 +24,30 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
   const [maxSpeed, setMaxSpeed] = useState('');
   const [groupSize, setGroupSize] = useState('2');
   const [customName, setCustomName] = useState('');
+  const [fixedMax, setFixedMax] = useState('');
+  const [alpha, setAlpha] = useState('');
+  const [sigma, setSigma] = useState('');
 
   const groupSizeValid = Number.isInteger(Number(groupSize)) && Number(groupSize) >= 2;
+
+  const visualizerFilledCount = [fixedMax, alpha, sigma].filter((v) => v !== '').length;
+  const visualizerComplete = visualizerFilledCount === 0 || visualizerFilledCount === 3;
+  const visualizerNumbersValid =
+    visualizerFilledCount !== 3 ||
+    (Number(fixedMax) >= 0 && Number(alpha) >= 0 && Number(alpha) <= 1 && Number(sigma) >= 0);
+  const visualizerValid = visualizerComplete && visualizerNumbersValid;
+  const visualizer =
+    visualizerFilledCount === 3
+      ? { fixed_max: Number(fixedMax), alpha: Number(alpha), sigma: Number(sigma) }
+      : undefined;
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const trimmedName = customName.trim() || undefined;
+    setCustomName('');
 
     if (category === 'directional') {
-      onAdd({ type: 'directional', direction }, trimmedName);
+      onAdd({ type: 'directional', direction, ...(visualizer ? { visualizer } : {}) }, trimmedName);
       return;
     }
 
@@ -41,6 +57,7 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
           type: 'speed',
           ...(minSpeed !== '' ? { min_speed: Number(minSpeed) } : {}),
           ...(maxSpeed !== '' ? { max_speed: Number(maxSpeed) } : {}),
+          ...(visualizer ? { visualizer } : {}),
         },
         trimmedName,
       );
@@ -48,14 +65,17 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
     }
 
     if (groupSizeValid) {
-      onAdd({ type: 'cluster', group_size: Number(groupSize) }, trimmedName);
+      onAdd(
+        { type: 'cluster', group_size: Number(groupSize), ...(visualizer ? { visualizer } : {}) },
+        trimmedName,
+      );
     }
   };
 
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-4 border border-gray-300 rounded-lg p-4 w-full max-w-[420px]"
+      className="flex flex-col gap-4 border border-gray-300 rounded-lg p-4 w-full max-w-105"
     >
       <h3 className="text-lg font-semibold">Dodaj analizę heatmapy</h3>
 
@@ -145,10 +165,55 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
         </label>
       )}
 
+      <fieldset className="border-0 p-0 flex flex-col gap-2">
+        <legend className="text-sm text-gray-500 pt-4">Ustawienia wizualizacji (opcjonalnie)</legend>
+        <div className="flex flex-row flex-wrap gap-3">
+          <label className="flex flex-col gap-1 flex-1 min-w-20">
+            Fixed max
+            <input
+              type="number"
+              min={0}
+              step="0.1"
+              value={fixedMax}
+              onChange={(e) => setFixedMax(e.target.value)}
+              placeholder="domyślne"
+              className={visualizerInputClasses}
+            />
+          </label>
+          <label className="flex flex-col gap-1 flex-1 min-w-20">
+            Alpha
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step="0.05"
+              value={alpha}
+              onChange={(e) => setAlpha(e.target.value)}
+              placeholder="domyślne"
+              className={visualizerInputClasses}
+            />
+          </label>
+          <label className="flex flex-col gap-1 flex-1 min-w-20">
+            Sigma
+            <input
+              type="number"
+              min={0}
+              step="1"
+              value={sigma}
+              onChange={(e) => setSigma(e.target.value)}
+              placeholder="domyślne"
+              className={visualizerInputClasses}
+            />
+          </label>
+        </div>
+        {!visualizerComplete && (
+          <p className="text-red-600 text-sm">Uzupełnij wszystkie trzy pola albo zostaw je puste.</p>
+        )}
+      </fieldset>
+
       <button
         type="submit"
-        onClick={() => setCustomName('')}
-        disabled={category === 'cluster' && !groupSizeValid}
+        disabled={(category === 'cluster' && !groupSizeValid) || !visualizerValid}
         className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Dodaj

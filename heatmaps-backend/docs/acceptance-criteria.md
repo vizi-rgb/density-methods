@@ -14,6 +14,7 @@ Definition-of-Done for the incremental-per-heatmap / MP4 redesign (see `implemen
 - [x] Cluster `group_size` is an **exact** match (not "N or more") — `tests/unit/test_pipeline_tracks.py::test_cluster_track_renders_only_the_requested_group_size` asserts a size-3 request stays empty when only a size-2 cluster actually formed.
 - [ ] Multiple jobs against the same video, or multiple videos, processed concurrently without cross-job/cross-video leakage — not tested with genuine concurrency (same gap as before this redesign; UUID-per-resource + no shared mutable state supports it, but it's reasoning, not a verified guarantee).
 - [x] Only `lib`'s `YOLOModel` is used — true by construction.
+- [ ] Optional per-request `visualizer` (`fixed_max`/`alpha`/`sigma`) overrides the configured defaults when supplied, all-or-nothing (`app/services/pipeline.py:231-237`); omitting it falls back to `Settings.heatmap_fixed_max/heatmap_alpha/heatmap_sigma`. Ruff/mypy clean and the full test suite still passes, but that only exercises the fallback path — no test sends a `visualizer` override, so the override path itself is reasoning-verified, not test-verified.
 
 ## Code quality
 

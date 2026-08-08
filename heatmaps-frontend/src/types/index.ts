@@ -4,10 +4,16 @@ export type Direction = 'all' | 'static' | 'up' | 'down' | 'left' | 'right';
 
 export const DIRECTIONS: Direction[] = ['all', 'static', 'up', 'down', 'left', 'right'];
 
+export interface HeatmapVisualizerRequest {
+  fixed_max: number;
+  alpha: number;
+  sigma: number;
+}
+
 export type HeatmapRequest =
-  | { type: 'directional'; direction: Direction }
-  | { type: 'speed'; min_speed?: number; max_speed?: number }
-  | { type: 'cluster'; group_size: number };
+  | { type: 'directional'; direction: Direction; visualizer?: HeatmapVisualizerRequest }
+  | { type: 'speed'; min_speed?: number; max_speed?: number; visualizer?: HeatmapVisualizerRequest }
+  | { type: 'cluster'; group_size: number; visualizer?: HeatmapVisualizerRequest };
 
 export interface VideoOutput {
   type: string;

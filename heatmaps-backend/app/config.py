@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Tuple
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -36,6 +37,9 @@ class Settings(BaseSettings):
     @property
     def jobs_dir(self) -> Path:
         return self.data_dir / "jobs"
+
+    def get_visualizer_defaults(self) -> Tuple:
+        return self.heatmap_fixed_max, self.heatmap_alpha, self.heatmap_sigma
 
 
 @lru_cache

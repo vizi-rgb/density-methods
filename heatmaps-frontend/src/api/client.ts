@@ -1,4 +1,4 @@
-import type { HeatmapJobEvent, HeatmapRequest } from '../types';
+import type { HeatmapJobEvent, HeatmapRequest, VisualizerDefaultsResponse } from '../types';
 
 export class ApiRequestError extends Error {
   status: number;
@@ -58,4 +58,10 @@ export async function getHeatmapStatus(jobId: string): Promise<HeatmapJobEvent> 
   const res = await fetch(`${import.meta.env.VITE_API_URL}/api/heatmaps/${jobId}`);
   if (!res.ok) throw new ApiRequestError(res.status, await errorMessageFor(res));
   return res.json() as Promise<HeatmapJobEvent>;
+}
+
+export async function getVisualizerDefaults(): Promise<VisualizerDefaultsResponse> {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/defaults`);
+  if (!res.ok) throw new ApiRequestError(res.status, await errorMessageFor(res));
+  return res.json() as Promise<VisualizerDefaultsResponse>;
 }

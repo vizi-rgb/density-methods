@@ -28,6 +28,12 @@ export interface HeatmapJobEvent {
   error?: string;
 }
 
+export interface VisualizerDefaultsResponse {
+  fixed_max: number,
+  alpha: number,
+  sigma: number
+}
+
 /** One entry in the results grid — a job that's been requested, tracked
  * client-side from the moment "Add" is clicked. */
 export interface HeatmapTileData {

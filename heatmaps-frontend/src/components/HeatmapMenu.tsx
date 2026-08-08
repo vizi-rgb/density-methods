@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { DIRECTIONS } from '../types';
+import { useEffect, useState } from 'react';
+import { DIRECTIONS, type VisualizerDefaultsResponse } from '../types';
 import type { Direction, HeatmapRequest } from '../types';
+import { getVisualizerDefaults } from "../api/client.ts";
 
 type Category = 'directional' | 'speed' | 'cluster';
 
@@ -27,6 +28,11 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
   const [fixedMax, setFixedMax] = useState('');
   const [alpha, setAlpha] = useState('');
   const [sigma, setSigma] = useState('');
+  const [visualizerDefaults, setVisualizerDefaults] = useState({} as VisualizerDefaultsResponse);
+
+  useEffect(() => {
+    getVisualizerDefaults().then((res) => setVisualizerDefaults(res))
+  }, []);
 
   const groupSizeValid = Number.isInteger(Number(groupSize)) && Number(groupSize) >= 2;
 
@@ -176,7 +182,7 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
               step="0.1"
               value={fixedMax}
               onChange={(e) => setFixedMax(e.target.value)}
-              placeholder="domyślne"
+              placeholder={visualizerDefaults?.fixed_max?.toString() ?? 'automatycznie'}
               className={visualizerInputClasses}
             />
           </label>
@@ -189,7 +195,7 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
               step="0.05"
               value={alpha}
               onChange={(e) => setAlpha(e.target.value)}
-              placeholder="domyślne"
+              placeholder={visualizerDefaults?.alpha?.toString() ?? 'automatycznie'}
               className={visualizerInputClasses}
             />
           </label>
@@ -201,7 +207,7 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
               step="1"
               value={sigma}
               onChange={(e) => setSigma(e.target.value)}
-              placeholder="domyślne"
+              placeholder={visualizerDefaults?.sigma?.toString() ?? 'automatycznie'}
               className={visualizerInputClasses}
             />
           </label>

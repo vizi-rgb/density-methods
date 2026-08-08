@@ -26,6 +26,11 @@ class HealthResponse(BaseModel):
     workers_online: int
     queued_jobs: int
 
+class DefaultsResponse(BaseModel):
+    fixed_max: float
+    alpha: float
+    sigma: float
+
 
 Direction = Literal["all", "static", "up", "down", "left", "right"]
 

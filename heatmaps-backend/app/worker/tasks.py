@@ -64,6 +64,11 @@ def run_job(
             if frames_done % settings.progress_update_every_n_frames == 0:
                 _update_progress(job, frames_done, metadata.frames)
 
+        if frames_done == 0:
+            raise RuntimeError(
+                "No frames were processed — video may be corrupt or unreadable"
+            )
+
         encoder.close()
 
         job.meta["progress"] = 100

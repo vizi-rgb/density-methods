@@ -10,8 +10,10 @@ from app.services.storage import (
     ensure_base_dirs,
     finalize_video_path,
     new_id,
+    staging_video_path,
     video_url,
 )
+from app.services.video_normalizer import VideoNormalizeError, normalize_to_mp4
 
 router = APIRouter()
 
@@ -39,13 +41,15 @@ async def upload_video(
         )
 
     video_id = new_id()
-    suffix = f".{kind.extension}"
-    path = finalize_video_path(settings, video_id, suffix)
+    staging_path = staging_video_path(settings, video_id, f".{kind.extension}")
+    # Always normalized to MP4/H.264 below, regardless of the uploaded
+    # container/codec — see normalize_to_mp4 for why.
+    path = finalize_video_path(settings, video_id, ".mp4")
     max_bytes = settings.max_upload_mb * 1024 * 1024
     total_bytes = len(first_chunk)
 
     try:
-        with path.open("wb") as out:
+        with staging_path.open("wb") as out:
             out.write(first_chunk)
             while chunk := await file.read(_CHUNK_SIZE):
                 total_bytes += len(chunk)
@@ -56,9 +60,20 @@ async def upload_video(
                         f"File exceeds the {settings.max_upload_mb}MB limit.",
                     )
                 out.write(chunk)
+
+        try:
+            await normalize_to_mp4(staging_path, path)
+        except VideoNormalizeError as exc:
+            raise ApiError(
+                422,
+                "video_processing_failed",
+                "Uploaded file could not be processed as a video.",
+            ) from exc
     except ApiError:
         path.unlink(missing_ok=True)
         raise
+    finally:
+        staging_path.unlink(missing_ok=True)
 
     return VideoUploadResponse(
         video_id=video_id,

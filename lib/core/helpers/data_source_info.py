@@ -55,6 +55,17 @@ class DataSourceInfoReader:
             height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
             frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
             fps = int(capture.get(cv2.CAP_PROP_FPS))
+
+            # Container metadata (width/height/frame count) can look valid
+            # while the codec itself fails to decode any pixel data (e.g. an
+            # AV1 stream the build's decoder can't handle) — cap.read() is
+            # the only way to confirm frames are actually decodable.
+            ok, frame = capture.read()
+            if not ok or frame is None:
+                raise RuntimeError(
+                    f"Video source opened but no frame could be decoded "
+                    f"(corrupt file or unsupported codec): {file_path}"
+                )
         finally:
             capture.release()
 

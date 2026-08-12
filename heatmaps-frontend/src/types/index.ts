@@ -1,4 +1,11 @@
-export type AppState = 'IDLE' | 'UPLOADING' | 'READY' | 'ERROR';
+export type AppState = 'IDLE' | 'UPLOADING' | 'CALIBRATING' | 'READY' | 'ERROR';
+
+export type Point = [number, number];
+
+export interface CalibrationRequest {
+  camera_points: Point[];
+  real_world_points: Point[];
+}
 
 export type Direction = 'all' | 'static' | 'up' | 'down' | 'left' | 'right';
 

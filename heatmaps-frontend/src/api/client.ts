@@ -1,4 +1,9 @@
-import type { HeatmapJobEvent, HeatmapRequest, VisualizerDefaultsResponse } from '../types';
+import type {
+  CalibrationRequest,
+  HeatmapJobEvent,
+  HeatmapRequest,
+  VisualizerDefaultsResponse,
+} from '../types';
 
 export class ApiRequestError extends Error {
   status: number;
@@ -58,6 +63,18 @@ export async function getHeatmapStatus(jobId: string): Promise<HeatmapJobEvent> 
   const res = await fetch(`${import.meta.env.VITE_API_URL}/api/heatmaps/${jobId}`);
   if (!res.ok) throw new ApiRequestError(res.status, await errorMessageFor(res));
   return res.json() as Promise<HeatmapJobEvent>;
+}
+
+export async function submitCalibration(
+  videoId: string,
+  request: CalibrationRequest,
+): Promise<void> {
+  const res = await fetch(`${import.meta.env.VITE_API_URL}/api/videos/${videoId}/calibration`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) throw new ApiRequestError(res.status, await errorMessageFor(res));
 }
 
 export async function getVisualizerDefaults(): Promise<VisualizerDefaultsResponse> {

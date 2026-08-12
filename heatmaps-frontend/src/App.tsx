@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { FileUpload } from './components/FileUpload'
 import { VideoPreview } from './components/VideoPreview'
+import { PerspectiveCalibrator } from './components/PerspectiveCalibrator'
 import { HeatmapMenu } from './components/HeatmapMenu'
 import { HeatmapGrid } from './components/HeatmapGrid'
 import { cn } from '@sglara/cn'
-import { uploadVideo, createHeatmapJob, ApiRequestError } from './api/client'
+import { uploadVideo, createHeatmapJob, submitCalibration, ApiRequestError } from './api/client'
 import { describeHeatmapRequest } from './utils/describeHeatmapRequest'
-import type { AppState, HeatmapRequest, HeatmapTileData } from './types'
+import type { AppState, HeatmapRequest, HeatmapTileData, Point } from './types'
 
 const SESSION_STORAGE_KEY = 'heatmaps.session'
 
@@ -39,6 +40,7 @@ export default function App() {
   const [appState, setAppState] = useState<AppState>(() => (session ? 'READY' : 'IDLE'))
   const [error, setError] = useState<string | null>(null)
   const [addError, setAddError] = useState<string | null>(null)
+  const [calibrationError, setCalibrationError] = useState<string | null>(null)
   const [layout, setLayout] = useState<'grid' | 'list'>('grid')
   const [editMode, setEditMode] = useState<'normal' | 'edit'>('normal')
 
@@ -48,6 +50,7 @@ export default function App() {
     setAppState('IDLE')
     setError(null)
     setAddError(null)
+    setCalibrationError(null)
   }
 
   const handleUpload = async (file: File) => {
@@ -58,11 +61,29 @@ export default function App() {
       const newSession: Session = { videoId: video_id, videoUrl: video_url, tiles: [] }
       saveSession(newSession)
       setSession(newSession)
-      setAppState('READY')
+      setAppState('CALIBRATING')
     } catch (err) {
       setError(err instanceof ApiRequestError ? err.message : 'Błąd wysyłania pliku')
       setAppState('ERROR')
     }
+  }
+
+  const handleCalibrationSubmit = async (cameraPoints: Point[], realWorldPoints: Point[]) => {
+    if (!session) return
+    setCalibrationError(null)
+    try {
+      await submitCalibration(session.videoId, {
+        camera_points: cameraPoints,
+        real_world_points: realWorldPoints,
+      })
+      setAppState('READY')
+    } catch (err) {
+      setCalibrationError(err instanceof ApiRequestError ? err.message : 'Nie udało się zapisać kalibracji')
+    }
+  }
+
+  const handleCalibrationSkip = () => {
+    setAppState('READY')
   }
 
   const handleAddHeatmap = async (request: HeatmapRequest, customName?: string) => {
@@ -101,6 +122,15 @@ export default function App() {
 
       {appState === 'UPLOADING' && (
         <p>⏳ Wysyłanie pliku...</p>
+      )}
+
+      {appState === 'CALIBRATING' && session && (
+        <PerspectiveCalibrator
+          videoUrl={session.videoUrl}
+          onSubmit={handleCalibrationSubmit}
+          onSkip={handleCalibrationSkip}
+          error={calibrationError}
+        />
       )}
 
       {appState === 'READY' && session && (

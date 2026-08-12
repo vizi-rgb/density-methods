@@ -46,6 +46,23 @@ interface HeatmapVisualizerRequest {
 
 Implemented in `src/api/client.ts`'s `createHeatmapJob`. **Errors**: `404 video_not_found` for an unknown `video_id`, `400 invalid_request` for any per-type validation failure (bad `direction`, `group_size < 2`, `min_speed > max_speed`) — there's no separate `422` tier, everything body-validation-related is `400`.
 
+## `POST /api/videos/{video_id}/calibration`
+
+```typescript
+fetch(`${VITE_API_URL}/api/videos/${videoId}/calibration`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ camera_points: cameraPoints, real_world_points: realWorldPoints }), // Point[] = [number, number][]
+});
+// -> 204 No Content
+```
+
+Sets the per-video perspective calibration (4-point pixel↔real-world correspondence, index-matched between the two arrays) used server-side to build that video's `CameraToWorldMapper`. `camera_points` must be in the **source video's native pixel resolution**, not the scaled-down preview a user picks points on — `PerspectiveCalibrator` converts stage-display coordinates back to native before sending (multiplies by `naturalWidth / stageWidth`).
+
+Implemented in `src/api/client.ts`'s `submitCalibration`. **Errors**: `404 video_not_found` for an unknown `video_id`, `400 invalid_calibration_points` if the 4 points are degenerate (e.g. collinear), `400 invalid_request` if either array isn't exactly length 4.
+
+Calling this is optional from the backend's perspective — skipping it (the calibration screen's "Pomiń kalibrację" button) leaves the backend's hardcoded fallback matrix in place for that video's future heatmap jobs.
+
 ## `GET /api/heatmaps/{job_id}` (snapshot, for reconnect) & `GET /api/heatmaps/{job_id}/stream` (SSE)
 
 ```typescript

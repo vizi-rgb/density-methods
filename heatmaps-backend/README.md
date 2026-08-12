@@ -42,12 +42,18 @@ Basic flow (see [`docs/api-contract.md`](docs/api-contract.md) for full detail):
 curl -F "file=@video.mp4" http://localhost:8000/api/videos
 # -> {"video_id": "...", "video_url": "http://localhost:8000/media/videos/.../source.mp4"}
 
-# 2. add as many analyses as you want against that video_id
+# 2. (optional) calibrate perspective for accurate real-world speed —
+#    skip this and speed heatmaps fall back to a hardcoded reference matrix
+curl -X POST http://localhost:8000/api/videos/{video_id}/calibration \
+  -H "Content-Type: application/json" \
+  -d '{"camera_points":[[293,174],[40,557],[1752,524],[1512,149]],"real_world_points":[[0,0],[0,6],[15,6],[15,0]]}'
+
+# 3. add as many analyses as you want against that video_id
 curl -X POST http://localhost:8000/api/videos/{video_id}/heatmaps \
   -H "Content-Type: application/json" -d '{"type":"directional","direction":"right"}'
 # -> {"job_id": "..."}
 
-# 3. poll or stream each job independently
+# 4. poll or stream each job independently
 curl http://localhost:8000/api/heatmaps/{job_id}
 curl -N http://localhost:8000/api/heatmaps/{job_id}/stream
 ```
@@ -97,10 +103,13 @@ fresh clone/in CI. CI runs `-m "not integration"` for that reason.
 - Only `directional`/`speed`/`cluster` heatmap types are supported. `roi`/
   `tripwire` need user-supplied geometry (polygon/tripwire line) that no UI
   collects.
-- `speed` uses real-world km/h via `lib`'s `CameraToWorldMapper`, but its
-  `CameraInfo` calibration keypoints are hardcoded to one specific reference
-  video's camera perspective — accuracy for other footage depends on how
-  close that calibration happens to be.
+- `speed` uses real-world km/h via `lib`'s `CameraToWorldMapper`. Its
+  transformation matrix is now calibratable per-video via
+  `POST /api/videos/{video_id}/calibration` (4-point pixel↔real-world
+  correspondence); a video that was never calibrated falls back to `lib`'s
+  `CameraInfo` — hardcoded to one specific reference video's camera
+  perspective — so accuracy for uncalibrated footage still depends on how
+  close that fallback calibration happens to be.
 - No dedup — re-uploading the same video content creates a new `video_id`
   and a new copy on disk. Considered, explicitly out of scope for now.
 - Uploaded videos and job outputs under `data/` are kept indefinitely — no

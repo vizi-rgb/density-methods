@@ -66,6 +66,27 @@ All three fields are required together — there's no way to override just one a
 
 **Error responses:** `404` (`video_not_found`) if `video_id` doesn't exist, `400` (`invalid_request`) for any of the per-type validation above.
 
+## `POST /api/videos/{video_id}/calibration`
+
+Sets the perspective-transformation calibration for a previously uploaded video — a 4-point correspondence between pixel coordinates in the video frame and real-world coordinates (meters), used to build the `CameraToWorldMapper` passed into `MomentumTracker` for that video's future heatmap jobs (replacing the fixed reference-video matrix `speed` used before).
+
+**Request:**
+
+```json
+{
+  "camera_points": [[293, 174], [40, 557], [1752, 524], [1512, 149]],
+  "real_world_points": [[0, 0], [0, 6], [15, 6], [15, 0]]
+}
+```
+
+Both arrays are exactly 4 `[x, y]` pairs, correspondence by index (`camera_points[i]` ↔ `real_world_points[i]`) — order otherwise doesn't matter, as long as it's consistent between the two arrays. `camera_points` are pixel coordinates in the **source video's native resolution** (not a scaled-down preview).
+
+**Response `204 No Content`.**
+
+**Error responses:** `404` (`video_not_found`) if `video_id` doesn't exist. `400` (`invalid_calibration_points`) if the 4 points don't form a valid quadrilateral (e.g. three or more collinear) — `cv2.getPerspectiveTransform` doesn't raise for degenerate input, so the matrix is round-tripped against the request's own points to detect this. `400` (`invalid_request`) if either array isn't exactly length 4.
+
+Calibrating is **optional** — `POST /api/videos/{video_id}/heatmaps` falls back to `lib`'s hardcoded `CameraInfo` matrix if this endpoint was never called for that `video_id`, so uncalibrated videos still work (with the same accuracy caveat as before this endpoint existed).
+
 ## `GET /api/heatmaps/{job_id}`
 
 Point-in-time snapshot of one job — used by the frontend to recover state after a page reload or a dropped SSE connection. Same shape as SSE events below, without the `event:` framing.

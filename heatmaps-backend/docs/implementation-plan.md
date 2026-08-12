@@ -10,7 +10,7 @@ Second-generation design. The first version let the frontend select 1+ heatmap t
 - **Speed**: `SpeedHeatmapBuilder.with_speed_filter(SpeedFilter(...))` takes `min_speed`/`max_speed` bounds and a `get_speed_function`. We use `speed_km_per_h` (see camera-calibration note below), with a single filter built from whatever bounds the request gives (missing bound → `0`/`inf`).
 - **Cluster**: `ClusterHeatmap.get_heatmap()` buckets by **exact** DBSCAN cluster size as dynamic string keys (`"2"`, `"3"`, ...) — a request for group size N reads that one bucket (or an empty frame if it never occurs that video).
 
-**Always uses `CameraToWorldMapper(CameraInfo().get_transformation_matrix())`** for `MomentumTracker` (product decision, unrelated to this redesign) — `CameraInfo`'s calibration keypoints are hardcoded to one specific reference video, so `speed_km_per_h` accuracy for other footage is bounded by how close that calibration happens to be. `lib/core/momentum/` itself is never modified — this is passed in from `pipeline.py`, not changed in `lib`.
+**Builds a `CameraToWorldMapper` from a per-video transformation matrix** for `MomentumTracker` — resolved in `app/api/routes/heatmaps.py` from whatever was saved via `POST /api/videos/{video_id}/calibration` (see `api-contract.md`), falling back to `lib`'s `CameraInfo().get_transformation_matrix()` — hardcoded to one specific reference video — for videos that were never calibrated. `lib/core/momentum/` itself is never modified — the matrix is passed in from `pipeline.py`, not changed in `lib`.
 
 Neither `directional`/`speed`/`cluster` needs geometry input; `roi`/`tripwire` (which do — a polygon/tripwire line) are still out of scope, no UI for it.
 

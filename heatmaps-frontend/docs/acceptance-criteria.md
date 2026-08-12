@@ -19,6 +19,7 @@ Companion to `frontend-plan.md` / `api-integration.md`. Checklist for the increm
 - [x] An edit-mode toggle changes tile-click behavior: in edit mode, clicking a tile removes it from the session (client-side only — the underlying job/output on the backend is untouched); normal mode is unaffected.
 - [x] Queued tiles no longer hold an open SSE connection — they poll `getHeatmapStatus` every 2s and only open an `EventSource` once a job reaches `processing`. Fixes a real bug: adding more analyses than the browser's per-origin connection pool had room for meant the 4th+ tile's own creation request stalled until an earlier tile's SSE connection closed (root-caused via investigation of both the backend, which was confirmed non-blocking, and the frontend's connection usage).
 - [x] The add-analysis menu has an optional "Ustawienia wizualizacji" section (`fixed_max`/`alpha`/`sigma`), available for all three categories. All-or-nothing: 0 filled → `visualizer` omitted from the request (backend default applies); 3 filled → sent as an override; 1–2 filled → Add is disabled with an inline message. `tsc -b`/`eslint` clean, not yet visually clicked through.
+- [ ] After a successful upload, a `CALIBRATING` step (`PerspectiveCalibrator`) appears before the heatmap menu: pick 4 points on a captured video frame, enter matching real-world X/Y per point, submit → `READY`; or skip straight to `READY`. `tsc -b`/`pnpm build` clean. **Not yet visually verified** — a live click-through was attempted (local backend on an alternate port so as not to disturb an already-running Docker Compose stack, real video upload) but got stuck on the frame-capture step (Konva stage never left "Wczytywanie klatki wideo...") and was interrupted before root-causing it. Re-run this before treating the calibration screen as done; see `frontend-plan.md`'s `PerspectiveCalibrator.tsx` entry for how frame capture works.
 
 ## Non-functional
 
@@ -34,7 +35,8 @@ Companion to `frontend-plan.md` / `api-integration.md`. Checklist for the increm
 | Step | Action | Expected |
 |---|---|---|
 | 1 | Open the app | File picker visible, nothing else |
-| 2 | Choose a video, submit | Brief "wysyłanie" state, then preview appears |
+| 2 | Choose a video, submit | Brief "wysyłanie" state, then the calibration screen appears (captured video frame) |
+| 2b | Click 4 points on the frame, fill in real-world X/Y for each, click "Zatwierdź kalibrację" | Preview + add-analysis menu appear (state → `READY`) |
 | 3 | Add menu: pick Directional, "right", Add | New tile appears showing "Directional — right" with a progress bar at 0% |
 | 4 | Wait | Progress increases; tile switches to a playable video on completion |
 | 5 | Add menu: pick Speed, leave both bounds empty, Add | Second tile appears alongside the first, independent progress |

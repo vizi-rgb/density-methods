@@ -7,7 +7,9 @@ MP4_MAGIC_BYTES = (
 )
 
 
-def _fake_process_video(job_id, video_path_str, heatmap_request, base_url) -> None:
+def _fake_process_video(
+    job_id, video_path_str, heatmap_request, base_url, transformation_matrix
+) -> None:
     job = get_current_job()
     assert job is not None
     job.meta["output"] = {

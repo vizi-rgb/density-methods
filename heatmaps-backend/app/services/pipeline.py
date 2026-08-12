@@ -7,11 +7,12 @@ mirrors that wiring for arbitrary uploaded videos, restricted to the
 geometry-free heatmap types (`directional`/`speed`/`cluster`) since no UI
 collects ROI polygons or tripwire lines.
 
-Always builds a `CameraToWorldMapper` from `lib`'s `CameraInfo` transformation
-matrix and passes it to `MomentumTracker`, per product decision — note
-`CameraInfo`'s keypoints are a hardcoded perspective calibration for one
-specific reference video, so `speed_km_per_h` for an arbitrary upload is only
-as accurate as that calibration happens to be for the uploaded footage.
+Builds a `CameraToWorldMapper` from the `transformation_matrix` passed in by
+the caller and passes it to `MomentumTracker`. The caller (`app/api/routes/
+heatmaps.py`) resolves this per-video, from a matrix calibrated via
+`POST /api/videos/{video_id}/calibration`, falling back to `lib`'s
+`CameraInfo` hardcoded reference-video calibration when a video hasn't been
+calibrated.
 """
 
 from __future__ import annotations
@@ -30,7 +31,6 @@ from core.heatmap.directional.directional_heatmap_builder import (
 from core.heatmap.speed.speed_filter import SpeedFilter
 from core.heatmap.speed.speed_heatmap_builder import SpeedHeatmapBuilder
 from core.heatmap.visualizer.heatmap_visualizer import HeatmapVisualizer
-from core.helpers.camera_info import CameraInfo
 from core.helpers.data_source_info import DataSourceInfo, DataSourceInfoReader
 from core.helpers.point import PointUtil
 from core.momentum.camera_to_world_mapper import CameraToWorldMapper
@@ -212,6 +212,7 @@ def run(
     metadata: DataSourceInfo,
     heatmap_request: dict[str, Any],
     settings: Settings,
+    transformation_matrix: list[list[float]],
 ) -> Iterator[np.ndarray]:
     """Yields one BGR overlay frame per input frame for `heatmap_request`."""
     tracker_config = ConfigLoader.load_tracker_config(TrackerConfig.BOTSORT)
@@ -224,7 +225,9 @@ def run(
     model = YOLOModel(str(video_path))
     raw_predictions = model.run_tracking(show=False, stream=True)
     predictions_adapter = StreamedPredictionsAdapterFactory.for_model(model)
-    camera_world_mapper = CameraToWorldMapper(CameraInfo().get_transformation_matrix())
+    camera_world_mapper = CameraToWorldMapper(
+        np.array(transformation_matrix, dtype=np.float32)
+    )
     momentum = MomentumTracker(
         metadata.fps, settings.momentum_buffer_size, max_lost_frames, camera_world_mapper
     )

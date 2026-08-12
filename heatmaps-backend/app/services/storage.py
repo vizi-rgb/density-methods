@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from uuid import uuid4
 
@@ -43,6 +44,25 @@ def video_source_path(settings: Settings, video_id: str) -> Path | None:
 
 def video_url(base_url: str, video_id: str, source_path: Path) -> str:
     return f"{base_url.rstrip('/')}{MEDIA_MOUNT_PATH}/videos/{video_id}/{source_path.name}"
+
+
+def calibration_path(settings: Settings, video_id: str) -> Path:
+    return video_dir(settings, video_id) / "calibration.json"
+
+
+def save_calibration_matrix(
+    settings: Settings, video_id: str, matrix: list[list[float]]
+) -> None:
+    calibration_path(settings, video_id).write_text(json.dumps(matrix))
+
+
+def load_calibration_matrix(
+    settings: Settings, video_id: str
+) -> list[list[float]] | None:
+    path = calibration_path(settings, video_id)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text())
 
 
 def job_output_path(settings: Settings, job_id: str) -> Path:

@@ -31,11 +31,20 @@ def process_video(
     video_path_str: str,
     heatmap_request: dict[str, Any],
     base_url: str,
+    transformation_matrix: list[list[float]],
 ) -> None:
     job = get_current_job()
     if job is None:
         raise RuntimeError("process_video must be run inside an RQ worker")
-    run_job(job, job_id, Path(video_path_str), heatmap_request, base_url, get_settings())
+    run_job(
+        job,
+        job_id,
+        Path(video_path_str),
+        heatmap_request,
+        base_url,
+        transformation_matrix,
+        get_settings(),
+    )
 
 
 def run_job(
@@ -44,6 +53,7 @@ def run_job(
     video_path: Path,
     heatmap_request: dict[str, Any],
     base_url: str,
+    transformation_matrix: list[list[float]],
     settings: Settings,
 ) -> None:
     encoder: Mp4Encoder | None = None
@@ -57,7 +67,9 @@ def run_job(
         )
 
         frames_done = 0
-        for frame in pipeline.run(video_path, metadata, heatmap_request, settings):
+        for frame in pipeline.run(
+            video_path, metadata, heatmap_request, settings, transformation_matrix
+        ):
             encoder.write_frame(frame)
 
             frames_done += 1

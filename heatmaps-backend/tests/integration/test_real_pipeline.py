@@ -8,6 +8,7 @@ import itertools
 import subprocess
 
 import pytest
+from core.helpers.camera_info import CameraInfo
 from project_root import PROJECT_ROOT
 
 from app.config import Settings
@@ -46,9 +47,12 @@ def short_clip(tmp_path_factory):
 def test_pipeline_produces_overlays_for_a_few_real_frames(short_clip, heatmap_request) -> None:
     metadata = pipeline.read_metadata(short_clip)
     settings = Settings()
+    matrix = CameraInfo().get_transformation_matrix().tolist()
 
     frames = list(
-        itertools.islice(pipeline.run(short_clip, metadata, heatmap_request, settings), 5)
+        itertools.islice(
+            pipeline.run(short_clip, metadata, heatmap_request, settings, matrix), 5
+        )
     )
 
     assert len(frames) == 5

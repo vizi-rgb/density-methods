@@ -46,6 +46,7 @@ def _reset_fake_encoder_instances():
 _METADATA = DataSourceInfo(height=4, width=4, frames=2, fps=10)
 _FRAME = np.zeros((4, 4, 3), dtype=np.uint8)
 _HEATMAP_REQUEST = {"type": "directional", "direction": "right"}
+_MATRIX = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
 
 
 def test_run_job_success_sets_progress_and_output(tmp_path, monkeypatch) -> None:
@@ -53,7 +54,9 @@ def test_run_job_success_sets_progress_and_output(tmp_path, monkeypatch) -> None
     monkeypatch.setattr(
         tasks_module.pipeline,
         "run",
-        lambda video_path, metadata, heatmap_request, settings: iter([_FRAME, _FRAME]),
+        lambda video_path, metadata, heatmap_request, settings, transformation_matrix: iter(
+            [_FRAME, _FRAME]
+        ),
     )
     monkeypatch.setattr(tasks_module, "Mp4Encoder", _FakeEncoder)
 
@@ -61,7 +64,13 @@ def test_run_job_success_sets_progress_and_output(tmp_path, monkeypatch) -> None
     settings = Settings(data_dir=tmp_path)
 
     tasks_module.run_job(
-        job, "job-1", Path("/fake/video.mp4"), _HEATMAP_REQUEST, "http://x/", settings
+        job,
+        "job-1",
+        Path("/fake/video.mp4"),
+        _HEATMAP_REQUEST,
+        "http://x/",
+        _MATRIX,
+        settings,
     )
 
     assert job.meta["progress"] == 100
@@ -75,7 +84,7 @@ def test_run_job_success_sets_progress_and_output(tmp_path, monkeypatch) -> None
 
 
 def test_run_job_failure_records_error_and_kills_encoder(tmp_path, monkeypatch) -> None:
-    def _failing_run(video_path, metadata, heatmap_request, settings):
+    def _failing_run(video_path, metadata, heatmap_request, settings, transformation_matrix):
         yield _FRAME
         raise RuntimeError("model exploded")
 
@@ -88,7 +97,13 @@ def test_run_job_failure_records_error_and_kills_encoder(tmp_path, monkeypatch) 
 
     with pytest.raises(RuntimeError, match="model exploded"):
         tasks_module.run_job(
-            job, "job-2", Path("/fake/video.mp4"), _HEATMAP_REQUEST, "http://x/", settings
+            job,
+            "job-2",
+            Path("/fake/video.mp4"),
+            _HEATMAP_REQUEST,
+            "http://x/",
+            _MATRIX,
+            settings,
         )
 
     assert job.meta["error"] == "model exploded"

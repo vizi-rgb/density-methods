@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import cv2
 import filetype
+import numpy as np
 from fastapi import APIRouter, File, Request, UploadFile
 
 from app.api.errors import ApiError
-from app.api.schemas import VideoUploadResponse
+from app.api.schemas import CalibrationRequest, VideoUploadResponse
 from app.config import get_settings
 from app.services.storage import (
     ensure_base_dirs,
     finalize_video_path,
     new_id,
+    save_calibration_matrix,
     staging_video_path,
+    video_source_path,
     video_url,
 )
 from app.services.video_normalizer import VideoNormalizeError, normalize_to_mp4
@@ -79,3 +83,33 @@ async def upload_video(
         video_id=video_id,
         video_url=video_url(str(request.base_url), video_id, path),
     )
+
+
+@router.post("/api/videos/{video_id}/calibration", status_code=204)
+async def set_calibration(video_id: str, calibration: CalibrationRequest) -> None:
+    settings = get_settings()
+    if video_source_path(settings, video_id) is None:
+        raise ApiError(404, "video_not_found", f"No video found with id {video_id!r}.")
+
+    camera_pts = np.array(calibration.camera_points, dtype=np.float32)
+    real_world_pts = np.array(calibration.real_world_points, dtype=np.float32)
+    try:
+        matrix = cv2.getPerspectiveTransform(camera_pts, real_world_pts)
+    except cv2.error as exc:
+        raise ApiError(
+            400,
+            "invalid_calibration_points",
+            "Points do not form a valid quadrilateral.",
+        ) from exc
+
+    reprojected = cv2.perspectiveTransform(
+        camera_pts.reshape(-1, 1, 2), matrix
+    ).reshape(-1, 2)
+    if not np.allclose(reprojected, real_world_pts, atol=1e-2):
+        raise ApiError(
+            400,
+            "invalid_calibration_points",
+            "Points do not form a valid quadrilateral.",
+        )
+
+    save_calibration_matrix(settings, video_id, matrix.tolist())

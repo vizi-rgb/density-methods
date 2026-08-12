@@ -4,6 +4,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 
+from core.helpers.camera_info import CameraInfo
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from rq.exceptions import NoSuchJobError
@@ -13,7 +14,7 @@ from app.api.errors import ApiError
 from app.api.schemas import HeatmapJobResponse, HeatmapRequest
 from app.config import get_settings
 from app.domain.job import JobState, JobStatus
-from app.services.storage import new_id, video_source_path
+from app.services.storage import load_calibration_matrix, new_id, video_source_path
 from app.worker import queue as worker_queue
 
 router = APIRouter()
@@ -34,6 +35,10 @@ async def create_heatmap_job(
     if source_path is None:
         raise ApiError(404, "video_not_found", f"No video found with id {video_id!r}.")
 
+    transformation_matrix = load_calibration_matrix(settings, video_id)
+    if transformation_matrix is None:
+        transformation_matrix = CameraInfo().get_transformation_matrix().tolist()
+
     job_id = new_id()
     worker_queue.get_queue().enqueue(
         "app.worker.tasks.process_video",
@@ -41,6 +46,7 @@ async def create_heatmap_job(
         str(source_path),
         heatmap_request.model_dump(),
         str(request.base_url),
+        transformation_matrix,
         job_id=job_id,
         meta={"progress": 0},
         result_ttl=settings.job_ttl_seconds,

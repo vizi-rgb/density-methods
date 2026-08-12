@@ -21,6 +21,14 @@ class HeatmapJobResponse(BaseModel):
     job_id: str
 
 
+Point = tuple[float, float]
+
+
+class CalibrationRequest(BaseModel):
+    camera_points: list[Point] = Field(min_length=4, max_length=4)
+    real_world_points: list[Point] = Field(min_length=4, max_length=4)
+
+
 class HealthResponse(BaseModel):
     status: str
     workers_online: int

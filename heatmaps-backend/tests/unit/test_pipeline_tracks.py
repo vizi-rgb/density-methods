@@ -52,6 +52,29 @@ def test_directional_track_only_populates_requested_bucket() -> None:
     assert frame.sum() == 0
 
 
+def test_directional_track_applies_half_life_decay() -> None:
+    track = _DirectionalTrack("right", _METADATA, _SETTINGS, _MAX_LOST_FRAMES, 1)
+    update = TrackUpdate(
+        was_tracked=True,
+        first_point=TrackedPoint(0, 0),
+        last_point=TrackedPoint(1, 1),
+        current_point=TrackedPoint(2, 2),
+        direction_label="right",
+        speed_px_per_s=None,
+        speed_km_per_h=None,
+        track_id=1,
+        processed_segments=[(TrackedPoint(0, 0), TrackedPoint(2, 2))],
+    )
+
+    track.handle([update])
+    before = track.frame().sum()
+    for _ in range(_METADATA.fps):
+        track.apply_decay()
+    after = track.frame().sum()
+
+    assert after < before
+
+
 def test_speed_track_uses_km_per_h_from_camera_calibration() -> None:
     # pipeline.py always builds a CameraToWorldMapper from CameraInfo's
     # transformation matrix (product decision), so speed_km_per_h is
@@ -94,6 +117,29 @@ def test_speed_track_respects_min_max_bounds() -> None:
     frame = track.frame()
 
     assert frame.sum() == 0
+
+
+def test_speed_track_applies_half_life_decay() -> None:
+    track = _SpeedTrack(None, None, _METADATA, _SETTINGS, _MAX_LOST_FRAMES, 1)
+    update = TrackUpdate(
+        was_tracked=True,
+        first_point=TrackedPoint(0, 0),
+        last_point=TrackedPoint(0, 0),
+        current_point=TrackedPoint(3, 3),
+        direction_label="right",
+        speed_px_per_s=5.0,
+        speed_km_per_h=5.0,
+        track_id=1,
+        processed_segments=[(TrackedPoint(0, 0), TrackedPoint(3, 3))],
+    )
+
+    track.handle([update])
+    before = track.frame().sum()
+    for _ in range(_METADATA.fps):
+        track.apply_decay()
+    after = track.frame().sum()
+
+    assert after < before
 
 
 def test_cluster_track_frame_is_zero_when_requested_size_never_occurs() -> None:

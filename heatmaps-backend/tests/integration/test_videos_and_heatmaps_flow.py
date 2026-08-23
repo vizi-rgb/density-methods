@@ -1,10 +1,26 @@
 import io
 
+import pytest
 from rq import get_current_job
 
 MP4_MAGIC_BYTES = (
     b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom" + b"\x00" * 100
 )
+
+
+@pytest.fixture(autouse=True)
+def _stub_video_normalization(monkeypatch):
+    # POST /api/videos transcodes uploads via a real ffmpeg subprocess
+    # (app/services/video_normalizer.py) — these tests use synthetic
+    # MP4_MAGIC_BYTES with no real video stream, which ffmpeg can't decode.
+    # Stub it out so the endpoint's own logic (filetype detection, size
+    # limits, storage) is exercised without needing a decodable video.
+    async def _fake_normalize_to_mp4(source_path, output_path) -> None:
+        output_path.write_bytes(source_path.read_bytes())
+
+    monkeypatch.setattr(
+        "app.api.routes.videos.normalize_to_mp4", _fake_normalize_to_mp4
+    )
 
 
 def _fake_process_video(
@@ -124,6 +140,17 @@ def test_create_heatmap_job_rejects_min_greater_than_max_speed(client, monkeypat
     response = client.post(
         f"/api/videos/{video_id}/heatmaps",
         json={"type": "speed", "min_speed": 10, "max_speed": 2},
+    )
+    assert response.status_code == 400
+
+
+def test_create_heatmap_job_rejects_non_positive_half_life_time(client, monkeypatch) -> None:
+    _patch_process_video(monkeypatch)
+    video_id = _upload_video(client)
+
+    response = client.post(
+        f"/api/videos/{video_id}/heatmaps",
+        json={"type": "directional", "direction": "up", "half_life_time": 0},
     )
     assert response.status_code == 400
 

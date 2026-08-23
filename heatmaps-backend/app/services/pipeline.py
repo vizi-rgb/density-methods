@@ -58,9 +58,10 @@ class _DirectionalTrack:
         metadata: DataSourceInfo,
         settings: Settings,
         max_lost_frames: int,
+        half_life_time: int | None = None,
     ) -> None:
         self._direction = direction
-        self._heatmap = (
+        builder = (
             DirectionalHeatmapBuilder()
             .with_height(metadata.height)
             .with_width(metadata.width)
@@ -68,8 +69,10 @@ class _DirectionalTrack:
             .with_fps(metadata.fps)
             .with_momentum_buffer_size(settings.momentum_buffer_size)
             .with_max_lost_frames(max_lost_frames)
-            .build()
         )
+        if half_life_time is not None:
+            builder = builder.with_half_life_time(half_life_time)
+        self._heatmap = builder.build()
 
     def apply_decay(self) -> None:
         self._heatmap.apply_decay()
@@ -94,6 +97,7 @@ class _SpeedTrack:
         metadata: DataSourceInfo,
         settings: Settings,
         max_lost_frames: int,
+        half_life_time: int | None = None,
     ) -> None:
         speed_filter = SpeedFilter(
             name=self._FILTER_NAME,
@@ -101,7 +105,7 @@ class _SpeedTrack:
             max_speed=max_speed if max_speed is not None else float("inf"),
             get_speed_function=lambda u: u.speed_km_per_h,
         )
-        self._heatmap = (
+        builder = (
             SpeedHeatmapBuilder()
             .with_height(metadata.height)
             .with_width(metadata.width)
@@ -110,8 +114,10 @@ class _SpeedTrack:
             .with_momentum_buffer_size(settings.momentum_buffer_size)
             .with_max_lost_frames(max_lost_frames)
             .with_speed_filter(speed_filter)
-            .build()
         )
+        if half_life_time is not None:
+            builder = builder.with_half_life_time(half_life_time)
+        self._heatmap = builder.build()
 
     def apply_decay(self) -> None:
         self._heatmap.apply_decay()
@@ -133,11 +139,12 @@ class _ClusterTrack:
         metadata: DataSourceInfo,
         settings: Settings,
         max_lost_frames: int,
+        half_life_time: int | None = None,
     ) -> None:
         self._group_size_key = str(group_size)
         self._height = metadata.height
         self._width = metadata.width
-        self._heatmap = (
+        builder = (
             ClusterHeatmapBuilder()
             .with_height(metadata.height)
             .with_width(metadata.width)
@@ -145,11 +152,14 @@ class _ClusterTrack:
             .with_fps(metadata.fps)
             .with_momentum_buffer_size(settings.momentum_buffer_size)
             .with_max_lost_frames(max_lost_frames)
-            .build()
         )
 
+        if half_life_time is not None:
+            builder = builder.with_half_life_time(half_life_time)
+        self._heatmap = builder.build()
+
     def apply_decay(self) -> None:
-        pass  # ClusterHeatmap has no decay support.
+        self._heatmap.apply_decay()
 
     def handle(self, updates: list) -> None:
         self._heatmap.handle(updates)
@@ -158,9 +168,6 @@ class _ClusterTrack:
         pass  # ClusterHeatmap has no lost-track flushing.
 
     def frame(self) -> np.ndarray:
-        # Cluster sizes are dynamic, unbounded dict keys (one per distinct
-        # cluster size DBSCAN finds that frame) — render exactly the
-        # requested size, or an empty frame if it never occurs.
         buckets = self._heatmap.get_heatmap()
         bucket = buckets.get(self._group_size_key)
         if bucket is None:
@@ -178,7 +185,11 @@ def _build_track(
 
     if heatmap_type == "directional":
         return _DirectionalTrack(
-            heatmap_request["direction"], metadata, settings, max_lost_frames
+            heatmap_request["direction"],
+            metadata,
+            settings,
+            max_lost_frames,
+            heatmap_request.get("half_life_time"),
         )
     if heatmap_type == "speed":
         return _SpeedTrack(
@@ -187,10 +198,15 @@ def _build_track(
             metadata,
             settings,
             max_lost_frames,
+            heatmap_request.get("half_life_time"),
         )
     if heatmap_type == "cluster":
         return _ClusterTrack(
-            heatmap_request["group_size"], metadata, settings, max_lost_frames
+            heatmap_request["group_size"],
+            metadata,
+            settings,
+            max_lost_frames,
+            heatmap_request.get("half_life_time")
         )
 
     raise PipelineError(f"Unsupported heatmap type: {heatmap_type!r}")

@@ -40,6 +40,8 @@ class Mp4Encoder:
             "-an",
             "-c:v",
             "libx264",
+            "-crf",
+            "18",
             "-pix_fmt",
             "yuv420p",
             "-movflags",

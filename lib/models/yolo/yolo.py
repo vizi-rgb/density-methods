@@ -7,6 +7,8 @@ from config.config_loader import ModelConfig
 from models.base_model import BaseModel
 from ultralytics.utils import set_logging
 
+from project_root import PROJECT_ROOT
+
 logger = logging.getLogger(__name__)
 
 
@@ -41,6 +43,7 @@ class YOLOModel(BaseModel):
 
     def run_tracking(self, show: bool = None, stream: bool = False):
         logger.info("Running YOLO tracking on source: %s", self.dataset_path)
+        tracker_path = PROJECT_ROOT / "config" / "botsort.yaml"
         return self._get_model().track(
             source=self.dataset_path,
             show=self.config.get("show", False) if show is None else show,
@@ -50,4 +53,5 @@ class YOLOModel(BaseModel):
             iou=self.config["iou"],
             stream=stream,
             persist=True,
+            tracker=tracker_path
         )

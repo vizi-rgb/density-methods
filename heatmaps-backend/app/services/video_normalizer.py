@@ -33,6 +33,8 @@ async def normalize_to_mp4(source_path: Path, output_path: Path) -> None:
         "-an",
         "-c:v",
         "libx264",
+        "-crf",
+        "18",
         "-pix_fmt",
         "yuv420p",
         "-movflags",

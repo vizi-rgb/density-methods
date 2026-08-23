@@ -18,9 +18,9 @@ export interface HeatmapVisualizerRequest {
 }
 
 export type HeatmapRequest =
-  | { type: 'directional'; direction: Direction; visualizer?: HeatmapVisualizerRequest }
-  | { type: 'speed'; min_speed?: number; max_speed?: number; visualizer?: HeatmapVisualizerRequest }
-  | { type: 'cluster'; group_size: number; visualizer?: HeatmapVisualizerRequest };
+  | { type: 'directional'; direction: Direction; half_life_time?: number; visualizer?: HeatmapVisualizerRequest }
+  | { type: 'speed'; min_speed?: number; max_speed?: number; half_life_time?: number; visualizer?: HeatmapVisualizerRequest }
+  | { type: 'cluster'; group_size: number; half_life_time?: number; visualizer?: HeatmapVisualizerRequest };
 
 export interface VideoOutput {
   type: string;

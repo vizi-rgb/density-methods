@@ -24,6 +24,7 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
   const [minSpeed, setMinSpeed] = useState('');
   const [maxSpeed, setMaxSpeed] = useState('');
   const [groupSize, setGroupSize] = useState('2');
+  const [halfLifeTime, setHalfLifeTime] = useState('');
   const [customName, setCustomName] = useState('');
   const [fixedMax, setFixedMax] = useState('');
   const [alpha, setAlpha] = useState('');
@@ -35,6 +36,8 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
   }, []);
 
   const groupSizeValid = Number.isInteger(Number(groupSize)) && Number(groupSize) >= 2;
+  const halfLifeTimeValid =
+    halfLifeTime === '' || (Number.isInteger(Number(halfLifeTime)) && Number(halfLifeTime) > 0);
 
   const visualizerFilledCount = [fixedMax, alpha, sigma].filter((v) => v !== '').length;
   const visualizerComplete = visualizerFilledCount === 0 || visualizerFilledCount === 3;
@@ -53,7 +56,15 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
     setCustomName('');
 
     if (category === 'directional') {
-      onAdd({ type: 'directional', direction, ...(visualizer ? { visualizer } : {}) }, trimmedName);
+      onAdd(
+        {
+          type: 'directional',
+          direction,
+          ...(halfLifeTime !== '' ? { half_life_time: Number(halfLifeTime) } : {}),
+          ...(visualizer ? { visualizer } : {}),
+        },
+        trimmedName,
+      );
       return;
     }
 
@@ -63,6 +74,7 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
           type: 'speed',
           ...(minSpeed !== '' ? { min_speed: Number(minSpeed) } : {}),
           ...(maxSpeed !== '' ? { max_speed: Number(maxSpeed) } : {}),
+          ...(halfLifeTime !== '' ? { half_life_time: Number(halfLifeTime) } : {}),
           ...(visualizer ? { visualizer } : {}),
         },
         trimmedName,
@@ -72,7 +84,12 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
 
     if (groupSizeValid) {
       onAdd(
-        { type: 'cluster', group_size: Number(groupSize), ...(visualizer ? { visualizer } : {}) },
+        {
+          type: 'cluster',
+          group_size: Number(groupSize),
+          ...(halfLifeTime !== '' ? { half_life_time: Number(halfLifeTime) } : {}),
+          ...(visualizer ? { visualizer } : {}),
+        },
         trimmedName,
       );
     }
@@ -171,6 +188,19 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
         </label>
       )}
 
+      <label className="flex flex-col gap-1 min-w-24 max-w-[160px]">
+        Czas połowicznego zaniku (s)
+        <input
+          type="number"
+          min={1}
+          step="1"
+          value={halfLifeTime}
+          onChange={(e) => setHalfLifeTime(e.target.value)}
+          placeholder="brak"
+          className={inputClasses}
+        />
+      </label>
+
       <fieldset className="border-0 p-0 flex flex-col gap-2">
         <legend className="text-sm text-gray-500 pt-4">Ustawienia wizualizacji (opcjonalnie)</legend>
         <div className="flex flex-row flex-wrap gap-3">
@@ -219,7 +249,7 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
 
       <button
         type="submit"
-        disabled={(category === 'cluster' && !groupSizeValid) || !visualizerValid}
+        disabled={(category === 'cluster' && !groupSizeValid) || !visualizerValid || !halfLifeTimeValid}
         className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Dodaj

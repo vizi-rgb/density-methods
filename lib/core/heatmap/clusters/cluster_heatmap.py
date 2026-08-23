@@ -7,6 +7,8 @@ import numpy as np
 
 from core.momentum.domain import TrackUpdate, TrackedPoint
 
+EPS = 0.01
+
 if TYPE_CHECKING:
     from core.heatmap.clusters.cluster_heatmap_builder import (
         ClusterHeatmapBuilder,
@@ -71,6 +73,15 @@ class ClusterHeatmap:
     def _update_point_heatmap(
             self,
             point: TrackedPoint,
-            direction_label: str
+            cluster_size_label: str
     ):
-        self.heatmap[direction_label][point.y, point.x] += 1
+        self.heatmap[cluster_size_label][point.y, point.x] += 1
+
+    def apply_decay(self):
+        if self.decay_factor:
+            self._apply_decay()
+
+    def _apply_decay(self):
+        for key in self.heatmap:
+            self.heatmap[key] *= self.decay_factor
+            self.heatmap[key][self.heatmap[key] < EPS] = 0.0

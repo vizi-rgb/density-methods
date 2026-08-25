@@ -137,7 +137,7 @@ export default function App() {
         <>
           <VideoPreview videoUrl={session.videoUrl} />
 
-          <HeatmapMenu onAdd={handleAddHeatmap} />
+          <HeatmapMenu videoUrl={session.videoUrl} onAdd={handleAddHeatmap} />
           {addError && <p className="text-red-600">❌ {addError}</p>}
 
           <div className="flex flex-row gap-2">

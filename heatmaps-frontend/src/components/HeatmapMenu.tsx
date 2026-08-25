@@ -1,29 +1,47 @@
 import { useEffect, useState } from 'react';
-import { DIRECTIONS, type VisualizerDefaultsResponse } from '../types';
-import type { Direction, HeatmapRequest } from '../types';
+import { DIRECTIONS, REGION_BUCKETS, type VisualizerDefaultsResponse } from '../types';
+import type { Direction, HeatmapRequest, Point, RegionBucket } from '../types';
 import { getVisualizerDefaults } from "../api/client.ts";
+import { TripwirePicker } from './TripwirePicker';
+import { RoiPicker } from './RoiPicker';
 
-type Category = 'directional' | 'speed' | 'cluster';
+type Category = 'directional' | 'speed' | 'cluster' | 'tripwire' | 'roi';
 
 const CATEGORY_LABELS: Record<Category, string> = {
   directional: 'Kierunek',
   speed: 'Prędkość',
   cluster: 'Grupy',
+  tripwire: 'Tripwire',
+  roi: 'ROI',
+};
+
+const REGION_BUCKET_LABELS: Record<RegionBucket, string> = {
+  inside: 'Wewnątrz',
+  outside: 'Na zewnątrz',
+  'outside->inside': 'Wejście',
+  'inside->outside': 'Wyjście',
 };
 
 const inputClasses = 'border border-gray-300 rounded px-2 py-1 min-w-24';
 const visualizerInputClasses = 'border border-gray-300 rounded px-2 py-1 w-full min-w-0';
 
 interface HeatmapMenuProps {
+  videoUrl: string;
   onAdd: (request: HeatmapRequest, customName?: string) => void;
 }
 
-export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
+export function HeatmapMenu({ videoUrl, onAdd }: HeatmapMenuProps) {
   const [category, setCategory] = useState<Category>('directional');
   const [direction, setDirection] = useState<Direction>('all');
   const [minSpeed, setMinSpeed] = useState('');
   const [maxSpeed, setMaxSpeed] = useState('');
   const [groupSize, setGroupSize] = useState('2');
+  const [tripwireBucket, setTripwireBucket] = useState<RegionBucket>('inside');
+  const [tripwirePoints, setTripwirePoints] = useState<{ p1: Point; p2: Point; insidePoint: Point } | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [roiBucket, setRoiBucket] = useState<RegionBucket>('inside');
+  const [roiPolygon, setRoiPolygon] = useState<Point[] | null>(null);
+  const [roiPickerOpen, setRoiPickerOpen] = useState(false);
   const [halfLifeTime, setHalfLifeTime] = useState('');
   const [customName, setCustomName] = useState('');
   const [fixedMax, setFixedMax] = useState('');
@@ -82,6 +100,38 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
       return;
     }
 
+    if (category === 'tripwire') {
+      if (!tripwirePoints) return;
+      onAdd(
+        {
+          type: 'tripwire',
+          p1: tripwirePoints.p1,
+          p2: tripwirePoints.p2,
+          inside_point: tripwirePoints.insidePoint,
+          bucket: tripwireBucket,
+          ...(halfLifeTime !== '' ? { half_life_time: Number(halfLifeTime) } : {}),
+          ...(visualizer ? { visualizer } : {}),
+        },
+        trimmedName,
+      );
+      return;
+    }
+
+    if (category === 'roi') {
+      if (!roiPolygon) return;
+      onAdd(
+        {
+          type: 'roi',
+          polygon: roiPolygon,
+          bucket: roiBucket,
+          ...(halfLifeTime !== '' ? { half_life_time: Number(halfLifeTime) } : {}),
+          ...(visualizer ? { visualizer } : {}),
+        },
+        trimmedName,
+      );
+      return;
+    }
+
     if (groupSizeValid) {
       onAdd(
         {
@@ -98,7 +148,7 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex flex-col gap-4 border border-gray-300 rounded-lg p-4 w-full max-w-105"
+      className="flex flex-col gap-4 border border-gray-300 rounded-lg p-4 w-full max-w-125"
     >
       <h3 className="text-lg font-semibold">Dodaj analizę heatmapy</h3>
 
@@ -188,6 +238,110 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
         </label>
       )}
 
+      {category === 'tripwire' && (
+        <div className="flex flex-col gap-3">
+          <fieldset className="border-0 p-0 flex gap-3 flex-wrap">
+            {REGION_BUCKETS.map((value) => (
+              <label key={value} className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="tripwireBucket"
+                  value={value}
+                  checked={tripwireBucket === value}
+                  onChange={() => setTripwireBucket(value)}
+                />
+                {REGION_BUCKET_LABELS[value]}
+              </label>
+            ))}
+          </fieldset>
+
+          {tripwirePoints ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-500">Punkty tripwire ustawione</span>
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+              >
+                Zmień punkty
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 self-start"
+            >
+              Wybierz punkty na wideo
+            </button>
+          )}
+        </div>
+      )}
+
+      {category === 'roi' && (
+        <div className="flex flex-col gap-3">
+          <fieldset className="border-0 p-0 flex gap-3 flex-wrap">
+            {REGION_BUCKETS.map((value) => (
+              <label key={value} className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="roiBucket"
+                  value={value}
+                  checked={roiBucket === value}
+                  onChange={() => setRoiBucket(value)}
+                />
+                {REGION_BUCKET_LABELS[value]}
+              </label>
+            ))}
+          </fieldset>
+
+          {roiPolygon ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-500">Obszar ROI ustawiony ({roiPolygon.length} pkt.)</span>
+              <button
+                type="button"
+                onClick={() => setRoiPickerOpen(true)}
+                className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+              >
+                Zmień obszar
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setRoiPickerOpen(true)}
+              className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 self-start"
+            >
+              Wybierz obszar na wideo
+            </button>
+          )}
+        </div>
+      )}
+
+      {pickerOpen && (
+        <TripwirePicker
+          videoUrl={videoUrl}
+          initial={tripwirePoints}
+          onSubmit={(p1, p2, insidePoint) => {
+            setTripwirePoints({ p1, p2, insidePoint });
+            setPickerOpen(false);
+          }}
+          onCancel={() => setPickerOpen(false)}
+        />
+      )}
+
+      {roiPickerOpen && (
+        <RoiPicker
+          videoUrl={videoUrl}
+          initial={roiPolygon}
+          onSubmit={(polygon) => {
+            setRoiPolygon(polygon);
+            setRoiPickerOpen(false);
+          }}
+          onCancel={() => setRoiPickerOpen(false)}
+        />
+      )}
+
       <label className="flex flex-col gap-1 min-w-24 max-w-[160px]">
         Czas połowicznego zaniku (s)
         <input
@@ -249,7 +403,13 @@ export function HeatmapMenu({ onAdd }: HeatmapMenuProps) {
 
       <button
         type="submit"
-        disabled={(category === 'cluster' && !groupSizeValid) || !visualizerValid || !halfLifeTimeValid}
+        disabled={
+          (category === 'cluster' && !groupSizeValid) ||
+          (category === 'tripwire' && !tripwirePoints) ||
+          (category === 'roi' && !roiPolygon) ||
+          !visualizerValid ||
+          !halfLifeTimeValid
+        }
         className="inline-flex items-center justify-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
       >
         Dodaj

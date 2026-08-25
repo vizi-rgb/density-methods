@@ -17,10 +17,30 @@ export interface HeatmapVisualizerRequest {
   sigma: number;
 }
 
+export type RegionBucket = 'inside' | 'outside' | 'inside->outside' | 'outside->inside';
+
+export const REGION_BUCKETS: RegionBucket[] = ['inside', 'outside', 'inside->outside', 'outside->inside'];
+
 export type HeatmapRequest =
   | { type: 'directional'; direction: Direction; half_life_time?: number; visualizer?: HeatmapVisualizerRequest }
   | { type: 'speed'; min_speed?: number; max_speed?: number; half_life_time?: number; visualizer?: HeatmapVisualizerRequest }
-  | { type: 'cluster'; group_size: number; half_life_time?: number; visualizer?: HeatmapVisualizerRequest };
+  | { type: 'cluster'; group_size: number; half_life_time?: number; visualizer?: HeatmapVisualizerRequest }
+  | {
+      type: 'tripwire';
+      p1: Point;
+      p2: Point;
+      inside_point: Point;
+      bucket: RegionBucket;
+      half_life_time?: number;
+      visualizer?: HeatmapVisualizerRequest;
+    }
+  | {
+      type: 'roi';
+      polygon: Point[];
+      bucket: RegionBucket;
+      half_life_time?: number;
+      visualizer?: HeatmapVisualizerRequest;
+    };
 
 export interface VideoOutput {
   type: string;

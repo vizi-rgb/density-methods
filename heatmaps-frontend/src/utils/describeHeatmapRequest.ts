@@ -15,5 +15,13 @@ export function describeHeatmapRequest(request: HeatmapRequest): string {
     return 'Speed (any)';
   }
 
-  return `Cluster size ${request.group_size}`;
+  if (request.type === 'cluster') {
+    return `Cluster size ${request.group_size}`;
+  }
+
+  if (request.type === 'tripwire') {
+    return `Tripwire — ${request.bucket}`;
+  }
+
+  return `ROI — ${request.bucket}`;
 }

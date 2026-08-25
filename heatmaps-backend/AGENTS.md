@@ -96,14 +96,18 @@ monorepo) runs ruff/mypy/`pytest -m "not integration"` on push/PR touching
   and `_RoiTrack` (`app/services/pipeline.py`) read one of the same 4 bucket
   keys off `get_heatmap()` — `inside`/`outside`/`inside->outside`/
   `outside->inside` — selected by the request's `bucket` field
-  (`RegionBucket` in `schemas.py`). `_TripwireTrack.draw()` additionally
-  wraps the visualizer in `TripwireHeatmapVisualizer` to draw the line
-  overlay (using `get_tripwire()`'s *border-extended* endpoints, not the
-  raw clicked `p1`/`p2`); `_RoiTrack.draw()` wraps it in
-  `RoiHeatmapVisualizer` to draw the closed polygon. Both tracks' `flush()`
-  is a no-op — the underlying `RoiHeatmap.execute_track_update_batch()`
-  raises `NotImplementedError` for lost-track flushing, so it must never be
-  called for these two types.
+  (`RegionBucket` in `schemas.py`). `_TripwireTrack.draw()`/`_RoiTrack.draw()`
+  first render the background via the plain `HeatmapVisualizer`, then draw
+  their shape on top of that with a separate draw-only visualizer —
+  `TripwireVisualizer` (a line, using `get_tripwire()`'s *border-extended*
+  endpoints, not the raw clicked `p1`/`p2`) or `RoiVisualizer` (a closed
+  polygon). Those two classes (`core/heatmap/visualizer/tripwire_visualizer.py`,
+  `.../roi_visualizer.py`) only draw their shape onto an already-rendered
+  image — they don't know about `HeatmapVisualizer` or heatmaps at all,
+  which is what lets multiple regions be drawn onto one background in a
+  chain. Both tracks' `flush()` is a no-op — the underlying
+  `RoiHeatmap.execute_track_update_batch()` raises `NotImplementedError` for
+  lost-track flushing, so it must never be called for these two types.
 - **`lib/core/momentum/` stays unchanged — by explicit product decision.**
   `MomentumTracker.update_batch`'s no-mapper branch has a real bug (crashes
   unconditionally — a 3-tuple unpack against a 2-element `zip`), but it's

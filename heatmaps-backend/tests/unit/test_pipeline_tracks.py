@@ -3,7 +3,13 @@ from core.helpers.data_source_info import DataSourceInfo
 from core.momentum.domain import TrackedPoint, TrackUpdate
 
 from app.config import Settings
-from app.services.pipeline import _ClusterTrack, _DirectionalTrack, _SpeedTrack
+from app.services.pipeline import (
+    _ClusterTrack,
+    _DirectionalTrack,
+    _RoiTrack,
+    _SpeedTrack,
+    _TripwireTrack,
+)
 
 _METADATA = DataSourceInfo(height=100, width=100, frames=10, fps=25)
 _SETTINGS = Settings()
@@ -176,3 +182,95 @@ def test_cluster_track_renders_only_the_requested_group_size() -> None:
     track_for_3 = _ClusterTrack(3, _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
     track_for_3.handle(close_pair)
     assert track_for_3.frame().sum() == 0
+
+
+def test_tripwire_track_draws_into_the_requested_bucket() -> None:
+    # Vertical line at x=50; inside_point (90, 50) makes x>50 the "inside" half.
+    track = _TripwireTrack(
+        (50, 0), (50, 100), (90, 50), "inside", _METADATA, _SETTINGS, _MAX_LOST_FRAMES
+    )
+    update = TrackUpdate(
+        was_tracked=True,
+        first_point=TrackedPoint(80, 40),
+        last_point=TrackedPoint(80, 40),
+        current_point=TrackedPoint(85, 45),
+        direction_label="right",
+        speed_px_per_s=None,
+        speed_km_per_h=None,
+        track_id=1,
+        processed_segments=[(TrackedPoint(80, 40), TrackedPoint(85, 45))],
+    )
+
+    track.handle([update])
+    frame = track.frame()
+
+    assert frame.shape == (100, 100)
+    assert frame.sum() > 0
+
+
+def test_tripwire_track_only_populates_requested_bucket() -> None:
+    # Same update as above lands in "inside", so the "outside" bucket stays empty.
+    track = _TripwireTrack(
+        (50, 0), (50, 100), (90, 50), "outside", _METADATA, _SETTINGS, _MAX_LOST_FRAMES
+    )
+    update = TrackUpdate(
+        was_tracked=True,
+        first_point=TrackedPoint(80, 40),
+        last_point=TrackedPoint(80, 40),
+        current_point=TrackedPoint(85, 45),
+        direction_label="right",
+        speed_px_per_s=None,
+        speed_km_per_h=None,
+        track_id=1,
+        processed_segments=[(TrackedPoint(80, 40), TrackedPoint(85, 45))],
+    )
+
+    track.handle([update])
+    frame = track.frame()
+
+    assert frame.sum() == 0
+
+
+def test_roi_track_draws_into_the_requested_bucket() -> None:
+    # Rectangle covering x in [50, 100]; the update below lands inside it.
+    polygon = [(50, 0), (100, 0), (100, 100), (50, 100)]
+    track = _RoiTrack(polygon, "inside", _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+    update = TrackUpdate(
+        was_tracked=True,
+        first_point=TrackedPoint(80, 40),
+        last_point=TrackedPoint(80, 40),
+        current_point=TrackedPoint(85, 45),
+        direction_label="right",
+        speed_px_per_s=None,
+        speed_km_per_h=None,
+        track_id=1,
+        processed_segments=[(TrackedPoint(80, 40), TrackedPoint(85, 45))],
+    )
+
+    track.handle([update])
+    frame = track.frame()
+
+    assert frame.shape == (100, 100)
+    assert frame.sum() > 0
+
+
+def test_roi_track_only_populates_requested_bucket() -> None:
+    # Same update as above lands in "inside", so "outside" stays empty.
+    polygon = [(50, 0), (100, 0), (100, 100), (50, 100)]
+    track = _RoiTrack(polygon, "outside", _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+    update = TrackUpdate(
+        was_tracked=True,
+        first_point=TrackedPoint(80, 40),
+        last_point=TrackedPoint(80, 40),
+        current_point=TrackedPoint(85, 45),
+        direction_label="right",
+        speed_px_per_s=None,
+        speed_km_per_h=None,
+        track_id=1,
+        processed_segments=[(TrackedPoint(80, 40), TrackedPoint(85, 45))],
+    )
+
+    track.handle([update])
+    frame = track.frame()
+
+    assert frame.sum() == 0

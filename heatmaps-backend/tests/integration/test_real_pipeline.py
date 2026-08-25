@@ -42,6 +42,18 @@ def short_clip(tmp_path_factory):
         {"type": "directional", "direction": "all"},
         {"type": "speed", "min_speed": None, "max_speed": None},
         {"type": "cluster", "group_size": 2},
+        {
+            "type": "tripwire",
+            "p1": (412, 370),
+            "p2": (1350, 400),
+            "inside_point": (750, 750),
+            "bucket": "inside",
+        },
+        {
+            "type": "roi",
+            "polygon": [(500, 400), (1300, 400), (1300, 750), (500, 750)],
+            "bucket": "inside",
+        },
     ],
 )
 def test_pipeline_produces_overlays_for_a_few_real_frames(short_clip, heatmap_request) -> None:

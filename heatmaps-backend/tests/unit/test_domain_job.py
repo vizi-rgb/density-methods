@@ -88,3 +88,17 @@ def test_build_label_speed_variants() -> None:
 
 def test_build_label_cluster() -> None:
     assert build_label({"type": "cluster", "group_size": 3}) == "Cluster size 3"
+
+
+def test_build_label_tripwire() -> None:
+    assert (
+        build_label({"type": "tripwire", "bucket": "outside->inside"})
+        == "Tripwire — outside->inside"
+    )
+
+
+def test_build_label_roi() -> None:
+    assert (
+        build_label({"type": "roi", "bucket": "outside->inside"})
+        == "ROI — outside->inside"
+    )

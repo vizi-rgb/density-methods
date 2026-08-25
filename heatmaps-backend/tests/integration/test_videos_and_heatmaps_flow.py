@@ -155,6 +155,78 @@ def test_create_heatmap_job_rejects_non_positive_half_life_time(client, monkeypa
     assert response.status_code == 400
 
 
+def test_create_tripwire_heatmap_job(client, monkeypatch) -> None:
+    _patch_process_video(monkeypatch)
+    video_id = _upload_video(client)
+
+    response = client.post(
+        f"/api/videos/{video_id}/heatmaps",
+        json={
+            "type": "tripwire",
+            "p1": [0, 0],
+            "p2": [10, 10],
+            "inside_point": [5, 0],
+            "bucket": "inside",
+        },
+    )
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+
+    status = client.get(f"/api/heatmaps/{job_id}")
+    assert status.status_code == 200
+    assert status.json()["output"]["type"] == "tripwire"
+
+
+def test_create_heatmap_job_rejects_identical_tripwire_points(client, monkeypatch) -> None:
+    _patch_process_video(monkeypatch)
+    video_id = _upload_video(client)
+
+    response = client.post(
+        f"/api/videos/{video_id}/heatmaps",
+        json={
+            "type": "tripwire",
+            "p1": [5, 5],
+            "p2": [5, 5],
+            "inside_point": [0, 0],
+            "bucket": "inside",
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_create_roi_heatmap_job(client, monkeypatch) -> None:
+    _patch_process_video(monkeypatch)
+    video_id = _upload_video(client)
+
+    response = client.post(
+        f"/api/videos/{video_id}/heatmaps",
+        json={
+            "type": "roi",
+            "polygon": [[0, 0], [10, 0], [10, 10], [0, 10]],
+            "bucket": "inside",
+        },
+    )
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+
+    status = client.get(f"/api/heatmaps/{job_id}")
+    assert status.status_code == 200
+    assert status.json()["output"]["type"] == "roi"
+
+
+def test_create_heatmap_job_rejects_roi_polygon_with_fewer_than_three_points(
+    client, monkeypatch
+) -> None:
+    _patch_process_video(monkeypatch)
+    video_id = _upload_video(client)
+
+    response = client.post(
+        f"/api/videos/{video_id}/heatmaps",
+        json={"type": "roi", "polygon": [[0, 0], [10, 0]], "bucket": "inside"},
+    )
+    assert response.status_code == 400
+
+
 def test_status_for_unknown_job_is_404(client) -> None:
     response = client.get("/api/heatmaps/does-not-exist")
     assert response.status_code == 404

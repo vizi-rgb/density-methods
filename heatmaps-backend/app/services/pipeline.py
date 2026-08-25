@@ -31,8 +31,8 @@ from core.heatmap.speed.speed_filter import SpeedFilter
 from core.heatmap.speed.speed_heatmap_builder import SpeedHeatmapBuilder
 from core.heatmap.tripwire.tripwire_heatmap_builder import TripwireHeatmapBuilder
 from core.heatmap.visualizer.heatmap_visualizer import HeatmapVisualizer
-from core.heatmap.visualizer.roi_heatmap_visualizer import RoiHeatmapVisualizer
-from core.heatmap.visualizer.tripwire_heatmap_visualizer import TripwireHeatmapVisualizer
+from core.heatmap.visualizer.roi_visualizer import RoiVisualizer
+from core.heatmap.visualizer.tripwire_visualizer import TripwireVisualizer
 from core.helpers.data_source_info import DataSourceInfo, DataSourceInfoReader
 from core.helpers.point import PointUtil
 from core.momentum.camera_to_world_mapper import CameraToWorldMapper
@@ -223,7 +223,7 @@ class _TripwireTrack:
         if half_life_time is not None:
             builder = builder.with_half_life_time(half_life_time)
         self._heatmap = builder.build()
-        self._line_visualizer: TripwireHeatmapVisualizer | None = None
+        self._line_visualizer = TripwireVisualizer(*self._heatmap.get_tripwire())
 
     def apply_decay(self) -> None:
         self._heatmap.apply_decay()
@@ -245,11 +245,8 @@ class _TripwireTrack:
     def draw(
         self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
     ) -> np.ndarray:
-        if self._line_visualizer is None:
-            self._line_visualizer = TripwireHeatmapVisualizer(
-                visualizer, *self._heatmap.get_tripwire()
-            )
-        return self._line_visualizer.draw(frame, source_image)
+        background = visualizer.draw(frame, source_image)
+        return self._line_visualizer.draw(background)
 
 
 class _RoiTrack:
@@ -278,7 +275,7 @@ class _RoiTrack:
         if half_life_time is not None:
             builder = builder.with_half_life_time(half_life_time)
         self._heatmap = builder.build()
-        self._polygon_visualizer: RoiHeatmapVisualizer | None = None
+        self._polygon_visualizer = RoiVisualizer(self._heatmap.get_polygon())
 
     def apply_decay(self) -> None:
         self._heatmap.apply_decay()
@@ -300,11 +297,8 @@ class _RoiTrack:
     def draw(
         self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
     ) -> np.ndarray:
-        if self._polygon_visualizer is None:
-            self._polygon_visualizer = RoiHeatmapVisualizer(
-                visualizer, self._heatmap.get_polygon()
-            )
-        return self._polygon_visualizer.draw(frame, source_image)
+        background = visualizer.draw(frame, source_image)
+        return self._polygon_visualizer.draw(background)
 
 
 def _build_track(

@@ -2,8 +2,8 @@ from pathlib import Path
 
 from config.config_loader import ConfigLoader, TrackerConfig
 from core.adapter.predictions_adapter_factory import StreamedPredictionsAdapterFactory
-from core.heatmap import SpeedHeatmapBuilder, RoiHeatmapBuilder, RoiHeatmapVisualizer, TripwireHeatmapBuilder, \
-    TripwireHeatmapVisualizer
+from core.heatmap import SpeedHeatmapBuilder, RoiHeatmapBuilder, RoiVisualizer, TripwireHeatmapBuilder, \
+    TripwireVisualizer
 from core.heatmap.clusters.cluster_heatmap_builder import ClusterHeatmapBuilder
 from core.heatmap.directional.directional_heatmap_builder import (
     DirectionalHeatmapBuilder,
@@ -132,8 +132,8 @@ def main() -> None:
     momentum = MomentumTracker(metadata.fps, 15, max_lost_frames, mapper)
     heatmap_visualizer = HeatmapVisualizer(fixed_max=3, alpha=0.5, sigma=25)
 
-    roi_visualizer = RoiHeatmapVisualizer(heatmap_visualizer, roi_heatmap.get_polygon())
-    tripwire_visualizer = TripwireHeatmapVisualizer(heatmap_visualizer, *tripwire_heatmap.get_tripwire())
+    roi_visualizer = RoiVisualizer(roi_heatmap.get_polygon())
+    tripwire_visualizer = TripwireVisualizer(*tripwire_heatmap.get_tripwire())
 
     for category, save_paths in to_save.items():
         for direction, save_path in save_paths.items():
@@ -196,23 +196,20 @@ def main() -> None:
             )
 
         for roi_motion, path_base in to_save["roi"].items():
-            roi_visualizer.draw(
-                roi_heatmap.get_heatmap()[roi_motion],
-                processed_prediction.image,
-                save_path=path_base / f"{num}.png",
+            background = heatmap_visualizer.draw(
+                roi_heatmap.get_heatmap()[roi_motion], processed_prediction.image
             )
+            roi_visualizer.draw(background, save_path=path_base / f"{num}.png")
 
         for tripwire_motion, path_base in to_save["tripwire"].items():
-            tripwire_visualizer.draw(
-                tripwire_heatmap.get_heatmap()[tripwire_motion],
-                processed_prediction.image,
-                save_path=path_base / f"{num}.png",
+            background = heatmap_visualizer.draw(
+                tripwire_heatmap.get_heatmap()[tripwire_motion], processed_prediction.image
             )
+            tripwire_visualizer.draw(background, save_path=path_base / f"{num}.png")
 
+        background = heatmap_visualizer.draw(combined_heatmap, processed_prediction.image)
         tripwire_visualizer.draw(
-            combined_heatmap,
-            processed_prediction.image,
-            save_path=to_save["combined"]["combined"] / f"{num}.png",
+            background, save_path=to_save["combined"]["combined"] / f"{num}.png"
         )
 
     end = time.perf_counter()

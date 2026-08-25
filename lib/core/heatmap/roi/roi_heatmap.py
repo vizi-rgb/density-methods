@@ -75,9 +75,6 @@ class RoiHeatmap:
         ):
             raise RuntimeError("MomentumTracker returned incomplete track update.")
 
-        first_point, second_point = update.last_point, update.current_point
-        label = self._classify_point(second_point)
-        self._draw_line(self.heatmap[label], first_point, second_point)
         self._handle_roi_transition(update.track_id, update.last_point, update.current_point)
 
     def _handle_roi_transition(

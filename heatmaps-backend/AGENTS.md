@@ -1,9 +1,9 @@
 # AGENTS.md — heatmaps-backend
 
 FastAPI service: upload a video once, then incrementally add independent,
-parameterized heatmap analyses (directional/speed/cluster) against it,
-analyzed with the sibling `../lib` (`density-methods`) library. Every result
-is a plain MP4 (no HLS/`hls.js`) for `heatmaps-frontend` to play.
+parameterized heatmap analyses (directional/speed/cluster/tripwire/roi)
+against it, analyzed with the sibling `../lib` (`density-methods`) library.
+Every result is a plain MP4 (no HLS/`hls.js`) for `heatmaps-frontend` to play.
 
 Full design docs — read these before making non-trivial changes:
 - [`docs/implementation-plan.md`](docs/implementation-plan.md) — architecture, why MP4 not HLS, pipeline design.
@@ -50,7 +50,7 @@ uv run uvicorn app.main:app --reload                            # terminal 1
 uv run rq worker --worker-class rq.worker.SimpleWorker video-processing   # terminal 2 — see gotcha below
 
 uv run pytest -m "not integration"   # fast: unit + HTTP wiring (fakeredis)
-uv run pytest -m integration         # slow: real YOLO pipeline, all 3 types, needs lib's weights+sample video
+uv run pytest -m integration         # slow: real YOLO pipeline, all 5 types, needs lib's weights+sample video
 uv run ruff check .
 uv run mypy app tests
 ```
@@ -89,6 +89,21 @@ monorepo) runs ruff/mypy/`pytest -m "not integration"` on push/PR touching
   `static`/`up`/`down`/`left`/`right`, whichever the request asked for).
   Speed: one `SpeedFilter` built from the request's `min_speed`/`max_speed`
   (missing bound → `0`/`inf`), keyed off `speed_km_per_h`.
+- **`tripwire` is a special case of `roi`, not a separate analysis.**
+  `lib`'s `TripwireHeatmap` computes a half-plane polygon from the request's
+  `p1`/`p2`/`inside_point` (extends the line to the image borders) and
+  delegates everything to an internal `RoiHeatmap`. Both `_TripwireTrack`
+  and `_RoiTrack` (`app/services/pipeline.py`) read one of the same 4 bucket
+  keys off `get_heatmap()` — `inside`/`outside`/`inside->outside`/
+  `outside->inside` — selected by the request's `bucket` field
+  (`RegionBucket` in `schemas.py`). `_TripwireTrack.draw()` additionally
+  wraps the visualizer in `TripwireHeatmapVisualizer` to draw the line
+  overlay (using `get_tripwire()`'s *border-extended* endpoints, not the
+  raw clicked `p1`/`p2`); `_RoiTrack.draw()` wraps it in
+  `RoiHeatmapVisualizer` to draw the closed polygon. Both tracks' `flush()`
+  is a no-op — the underlying `RoiHeatmap.execute_track_update_batch()`
+  raises `NotImplementedError` for lost-track flushing, so it must never be
+  called for these two types.
 - **`lib/core/momentum/` stays unchanged — by explicit product decision.**
   `MomentumTracker.update_batch`'s no-mapper branch has a real bug (crashes
   unconditionally — a 3-tuple unpack against a 2-element `zip`), but it's

@@ -30,11 +30,15 @@ fetch(`${VITE_API_URL}/api/videos/${videoId}/heatmaps`, {
 
 `request` is one of:
 ```typescript
-{ type: 'directional', direction: 'all'|'static'|'up'|'down'|'left'|'right', visualizer?: HeatmapVisualizerRequest }
-{ type: 'speed', min_speed?: number, max_speed?: number, visualizer?: HeatmapVisualizerRequest }
-{ type: 'cluster', group_size: number, visualizer?: HeatmapVisualizerRequest }  // integer >= 2, EXACT match server-side, not "N or more"
+{ type: 'directional', direction: 'all'|'static'|'up'|'down'|'left'|'right', half_life_time?: number, visualizer?: HeatmapVisualizerRequest }
+{ type: 'speed', min_speed?: number, max_speed?: number, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }
+{ type: 'cluster', group_size: number, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }  // integer >= 2, EXACT match server-side, not "N or more"
+{ type: 'tripwire', p1: Point, p2: Point, inside_point: Point, bucket: RegionBucket, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }
+{ type: 'roi', polygon: Point[], bucket: RegionBucket, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }  // polygon needs >= 3 points
 ```
 ```typescript
+type RegionBucket = 'inside' | 'outside' | 'inside->outside' | 'outside->inside';
+
 interface HeatmapVisualizerRequest {
   fixed_max: number; // >= 0
   alpha: number;      // 0-1
@@ -42,9 +46,13 @@ interface HeatmapVisualizerRequest {
 }
 ```
 
-`visualizer` is optional on all three types and, per the backend contract, all-or-nothing — there's no way to override just `alpha` and default `fixed_max`/`sigma`. `HeatmapMenu` (see `frontend-plan.md`) enforces this client-side: Add is disabled unless 0 or 3 of the three fields are filled. Omitting `visualizer` entirely makes the backend use its configured defaults (`heatmap_fixed_max`/`heatmap_alpha`/`heatmap_sigma`, see `heatmaps-backend/docs/api-contract.md`).
+`half_life_time` (seconds, integer > 0) is optional on all five types — applies exponential decay to the heatmap every frame so old activity fades out instead of accumulating for the whole video. Omit for no decay.
 
-Implemented in `src/api/client.ts`'s `createHeatmapJob`. **Errors**: `404 video_not_found` for an unknown `video_id`, `400 invalid_request` for any per-type validation failure (bad `direction`, `group_size < 2`, `min_speed > max_speed`) — there's no separate `422` tier, everything body-validation-related is `400`.
+`visualizer` is optional on all five types and, per the backend contract, all-or-nothing — there's no way to override just `alpha` and default `fixed_max`/`sigma`. `HeatmapMenu` (see `frontend-plan.md`) enforces this client-side: Add is disabled unless 0 or 3 of the three fields are filled. Omitting `visualizer` entirely makes the backend use its configured defaults (`heatmap_fixed_max`/`heatmap_alpha`/`heatmap_sigma`, see `heatmaps-backend/docs/api-contract.md`).
+
+`tripwire`'s `p1`/`p2` are the two line endpoints and `inside_point` marks which half-plane is "inside" — all three collected via `TripwirePicker` (a Konva modal over a captured video frame, opened from `HeatmapMenu`), in the source video's native pixel resolution (same rescale-on-submit pattern as `PerspectiveCalibrator`, see below). `roi`'s `polygon` is collected the same way via `RoiPicker`, with no point cap (minimum 3 to submit) and a closed-polygon live preview. Both share the same `bucket` selector (`RegionBucket`) since `tripwire` is implemented server-side as a special case of `roi` — a half-plane polygon computed from the line + inside point.
+
+Implemented in `src/api/client.ts`'s `createHeatmapJob`. **Errors**: `404 video_not_found` for an unknown `video_id`, `400 invalid_request` for any per-type validation failure (bad `direction`, `group_size < 2`, `min_speed > max_speed`, `tripwire.p1 == p2`, `roi.polygon` under 3 points) — there's no separate `422` tier, everything body-validation-related is `400`.
 
 ## `POST /api/videos/{video_id}/calibration`
 
@@ -95,6 +103,8 @@ Not used by the frontend.
 - [x] `HeatmapRequest` discriminated union matches the backend's schema exactly, including `group_size`'s exact-match semantics.
 - [x] Singular `output` (not array) consumed correctly.
 - [x] Optional `visualizer` field sent when the menu's three fields are all filled, omitted otherwise — client-side all-or-nothing validation matches the backend's requirement.
+- [x] Optional `half_life_time` sent when set, omitted otherwise, on all five types.
+- [x] `tripwire`/`roi` geometry (`TripwirePicker`/`RoiPicker`, both Konva modals over a captured video frame) collected in native pixel resolution and submitted alongside a shared `RegionBucket` selector.
 - [x] Reload recovery — verified via `sessionStorage` persistence design; each tile re-syncs independently.
 - [x] CORS verified live against a real running backend from the actual `pnpm dev` origin (upload, job creation, video preview, job output).
-- [ ] Full visual browser click-through (upload → add all 3 types → tiles render and play) — **not done**. The Chrome extension wasn't connected in the environment this was built in; verification instead covered `tsc`/`eslint`/`pnpm build` (all clean) plus the exact HTTP contract exercised live with matching CORS headers. Do a real click-through before considering this fully done.
+- [ ] Full visual browser click-through (upload → add all 5 types, including placing tripwire/roi points → tiles render and play) — **not done**. The Chrome extension wasn't connected in the environment this was built in; verification instead covered `tsc`/`eslint`/`pnpm build` (all clean) plus the exact HTTP contract exercised live with matching CORS headers, and the backend side against real YOLO inference. Do a real click-through before considering this fully done.

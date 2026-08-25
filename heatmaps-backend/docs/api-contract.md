@@ -10,7 +10,7 @@ All error responses use the shape:
 { "error": { "code": "string", "message": "human-readable string" } }
 ```
 
-Validation failures on a JSON request body (missing/invalid fields, caught by FastAPI/pydantic) come back as `400` with `code: "invalid_request"` — this covers all the per-type validation below (invalid `direction`, `group_size < 2`, `min_speed > max_speed`), there's no separate `422` tier.
+Validation failures on a JSON request body (missing/invalid fields, caught by FastAPI/pydantic) come back as `400` with `code: "invalid_request"` — this covers all the per-type validation below (invalid `direction`, `group_size < 2`, `min_speed > max_speed`, `tripwire.p1 == p2`, `roi.polygon` with fewer than 3 points), there's no separate `422` tier.
 
 ## `POST /api/videos`
 
@@ -41,14 +41,24 @@ Creates one heatmap-analysis job against a previously uploaded video. JSON body,
 ```json
 { "type": "cluster", "group_size": 3 }
 ```
+```json
+{ "type": "tripwire", "p1": [412, 370], "p2": [1350, 400], "inside_point": [750, 750], "bucket": "inside" }
+```
+```json
+{ "type": "roi", "polygon": [[500, 400], [1300, 400], [1300, 750], [500, 750]], "bucket": "inside" }
+```
 
 | Type | Fields | Notes |
 |---|---|---|
 | `directional` | `direction`: one of `all`/`static`/`up`/`down`/`left`/`right` | Exactly one — rendering shows only movement classified in that direction. |
 | `speed` | `min_speed`, `max_speed`: optional numbers (km/h) | Either or both may be omitted (no lower/upper bound). `min_speed > max_speed` (when both given) is rejected. |
 | `cluster` | `group_size`: integer ≥ 2 | Renders groups of **exactly** this many people (not "N or more") — matches `lib`'s DBSCAN output, which buckets by exact cluster size. `1` is rejected (DBSCAN's `min_samples=2` means no such bucket can exist). |
+| `tripwire` | `p1`, `p2`: `[x, y]` pixel points forming the tripwire line; `inside_point`: `[x, y]` marking which half-plane is "inside"; `bucket`: one of `inside`/`outside`/`inside->outside`/`outside->inside` | `p1 == p2` is rejected (degenerate line). All points are in the **source video's native pixel resolution**. Rendered overlay draws the tripwire line on top of the heatmap. |
+| `roi` | `polygon`: array of ≥ 3 `[x, y]` pixel points; `bucket`: one of `inside`/`outside`/`inside->outside`/`outside->inside` | Fewer than 3 points is rejected. Points are in the **source video's native pixel resolution**. Rendered overlay draws the closed polygon on top of the heatmap. `tripwire` is implemented as a special case of `roi` (`lib`'s `TripwireHeatmap` computes a half-plane polygon from the line + inside point and delegates to `RoiHeatmap`) — both share the same 4-value `bucket` enum. |
 
-All three types also accept an optional `visualizer` object — rendering tuning knobs, unrelated to which heatmap type/params are selected:
+All five types also accept an optional `half_life_time` (integer seconds > 0) — an exponential decay applied to the heatmap every frame, so activity fades out over time instead of accumulating forever across the whole video. Omit it for no decay (the original all-time-accumulated behavior).
+
+All five types also accept an optional `visualizer` object — rendering tuning knobs, unrelated to which heatmap type/params are selected:
 
 ```json
 { "type": "directional", "direction": "right", "visualizer": { "fixed_max": 1.0, "alpha": 0.9, "sigma": 5.0 } }
@@ -102,7 +112,7 @@ Point-in-time snapshot of one job — used by the frontend to recover state afte
 }
 ```
 
-`output` is a **single object** — one job always produces exactly one result. `label` is a ready-to-display string built from the request (`"Directional — right"`, `"Speed ≥3.5 km/h"`, `"Speed 3.5–10 km/h"`, `"Speed (any)"`, `"Cluster size 3"`).
+`output` is a **single object** — one job always produces exactly one result. `label` is a ready-to-display string built from the request (`"Directional — right"`, `"Speed ≥3.5 km/h"`, `"Speed 3.5–10 km/h"`, `"Speed (any)"`, `"Cluster size 3"`, `"Tripwire — inside"`, `"ROI — outside->inside"`).
 
 **Error responses:** `404` (`job_not_found`) — unknown or expired job.
 

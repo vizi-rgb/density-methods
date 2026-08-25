@@ -1,8 +1,8 @@
 # heatmaps-backend
 
 FastAPI service that accepts an uploaded video, then lets you incrementally
-request individual heatmap analyses (directional / speed / cluster, each
-with its own parameters) against it via the
+request individual heatmap analyses (directional / speed / cluster / tripwire
+/ roi, each with its own parameters) against it via the
 [`density-methods`](../lib) library (YOLO tracking + heatmap builders).
 Every result — the raw upload preview and every heatmap analysis — is a
 plain MP4 for `heatmaps-frontend` to play with a plain `<video>` tag (no
@@ -84,7 +84,7 @@ treat as unverified until someone runs it for real.
 
 ```bash
 uv run pytest -m "not integration"   # fast: unit tests + HTTP wiring (fakeredis)
-uv run pytest -m integration         # slow: real YOLO pipeline, all 3 heatmap types, against a real clip
+uv run pytest -m integration         # slow: real YOLO pipeline, all 5 heatmap types, against a real clip
 uv run ruff check .
 uv run mypy app tests
 ```
@@ -100,9 +100,9 @@ fresh clone/in CI. CI runs `-m "not integration"` for that reason.
   flushed or a job's TTL (`job_ttl_seconds`) expires.
 - Single sequential worker — jobs are processed one at a time, by design
   (the ML pipeline is CPU/GPU-heavy).
-- Only `directional`/`speed`/`cluster` heatmap types are supported. `roi`/
-  `tripwire` need user-supplied geometry (polygon/tripwire line) that no UI
-  collects.
+- All 5 heatmap types are supported: `directional`/`speed`/`cluster` plus
+  `roi`/`tripwire` (user-drawn polygon / line+inside-point, collected via a
+  Konva picker in `heatmaps-frontend`).
 - `speed` uses real-world km/h via `lib`'s `CameraToWorldMapper`. Its
   transformation matrix is now calibratable per-video via
   `POST /api/videos/{video_id}/calibration` (4-point pixel↔real-world

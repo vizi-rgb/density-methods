@@ -1,8 +1,8 @@
 # AGENTS.md — heatmaps-frontend
 
 React app: upload a video once, then incrementally add independent,
-parameterized heatmap analyses (directional/speed/cluster) against it, each
-landing as its own tile in a grid as it completes. Talks to
+parameterized heatmap analyses (directional/speed/cluster/tripwire/roi)
+against it, each landing as its own tile in a grid as it completes. Talks to
 `heatmaps-backend`.
 
 Full design docs — read these before making non-trivial changes:
@@ -26,7 +26,10 @@ src/
   components/
     FileUpload.tsx        # file input + submit only — no options
     VideoPreview.tsx       # raw upload playback
+    PerspectiveCalibrator.tsx # 4-point calibration on a captured video frame (Konva)
     HeatmapMenu.tsx          # category + per-category params + Add
+    TripwirePicker.tsx        # modal: pick line (p1,p2) + inside point on a captured frame (Konva)
+    RoiPicker.tsx               # modal: pick an arbitrary polygon (>=3 pts) on a captured frame (Konva)
     HeatmapTile.tsx           # owns ONE job end-to-end: fetch + SSE + render
     HeatmapGrid.tsx            # grid of tiles, empty-state placeholder
     JobStatus.tsx                # progress bar, reused inside HeatmapTile
@@ -74,6 +77,22 @@ No test runner. `pnpm build`+`pnpm lint` are the only automated checks.
   — confirmed with the user. The number input just needs `>= 2` (matches
   backend's DBSCAN `min_samples=2`); don't add "at least N" framing to the
   label or UI copy.
+- **`tripwire`/`roi` share one `RegionBucket` type** (`inside`/`outside`/
+  `inside->outside`/`outside->inside`) and one label map
+  (`REGION_BUCKET_LABELS` in `HeatmapMenu.tsx`) — the backend implements
+  `tripwire` as a special case of `roi`, so the bucket semantics are
+  identical. Don't reintroduce a separate `TripwireBucket`.
+- **`TripwirePicker`/`RoiPicker` seed pre-existing points via a `useEffect`
+  keyed on `naturalSize`, not directly in `useState`.** The `initial` prop
+  is in natural (unscaled) image coordinates — the same space points are
+  submitted in — but the Konva canvas draws in scaled stage coordinates,
+  and the scale factor (`stageWidth / naturalSize.width`) is only known
+  once the captured video frame has loaded. Seeding `points` straight from
+  `initial` at mount time renders them off-canvas (a real bug hit once on
+  `TripwirePicker`'s "Zmień punkty" re-open flow) — always convert via
+  `* scale` inside an effect gated on `naturalSize`, using a `useRef` to
+  capture the mount-time `initial` value so the effect doesn't need it in
+  its dependency array.
 - **Tile labels are computed client-side** (`describeHeatmapRequest.ts`),
   immediately at Add-time, from the exact request object — not from the
   server's `output.label` (which only exists once a job completes, so

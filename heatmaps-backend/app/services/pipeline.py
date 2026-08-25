@@ -3,9 +3,7 @@ video-in / per-frame-overlay-out pipeline for exactly one heatmap request.
 
 There is no such single entrypoint in `lib` itself — `lib/main.py` wires the
 same pieces together by hand for one hardcoded video/ROI/tripwire setup. This
-mirrors that wiring for arbitrary uploaded videos, restricted to the
-geometry-free heatmap types (`directional`/`speed`/`cluster`) since no UI
-collects ROI polygons or tripwire lines.
+mirrors that wiring for arbitrary uploaded videos.
 
 Builds a `CameraToWorldMapper` from the `transformation_matrix` passed in by
 the caller and passes it to `MomentumTracker`. The caller (`app/api/routes/
@@ -17,7 +15,7 @@ calibrated.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -28,9 +26,13 @@ from core.heatmap.clusters.cluster_heatmap_builder import ClusterHeatmapBuilder
 from core.heatmap.directional.directional_heatmap_builder import (
     DirectionalHeatmapBuilder,
 )
+from core.heatmap.roi.roi_heatmap_builder import RoiHeatmapBuilder
 from core.heatmap.speed.speed_filter import SpeedFilter
 from core.heatmap.speed.speed_heatmap_builder import SpeedHeatmapBuilder
+from core.heatmap.tripwire.tripwire_heatmap_builder import TripwireHeatmapBuilder
 from core.heatmap.visualizer.heatmap_visualizer import HeatmapVisualizer
+from core.heatmap.visualizer.roi_heatmap_visualizer import RoiHeatmapVisualizer
+from core.heatmap.visualizer.tripwire_heatmap_visualizer import TripwireHeatmapVisualizer
 from core.helpers.data_source_info import DataSourceInfo, DataSourceInfoReader
 from core.helpers.point import PointUtil
 from core.momentum.camera_to_world_mapper import CameraToWorldMapper
@@ -49,6 +51,9 @@ class _HeatmapTrack(Protocol):
     def handle(self, updates: list) -> None: ...
     def flush(self, lost_updates: list) -> None: ...
     def frame(self) -> np.ndarray: ...
+    def draw(
+        self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
+    ) -> np.ndarray: ...
 
 
 class _DirectionalTrack:
@@ -85,6 +90,11 @@ class _DirectionalTrack:
 
     def frame(self) -> np.ndarray:
         return self._heatmap.get_heatmap()[self._direction]
+
+    def draw(
+        self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
+    ) -> np.ndarray:
+        return visualizer.draw(frame, source_image)
 
 
 class _SpeedTrack:
@@ -131,6 +141,11 @@ class _SpeedTrack:
     def frame(self) -> np.ndarray:
         return self._heatmap.get_heatmap()[self._FILTER_NAME]
 
+    def draw(
+        self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
+    ) -> np.ndarray:
+        return visualizer.draw(frame, source_image)
+
 
 class _ClusterTrack:
     def __init__(
@@ -174,6 +189,123 @@ class _ClusterTrack:
             return np.zeros((self._height, self._width), dtype=np.float32)
         return bucket
 
+    def draw(
+        self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
+    ) -> np.ndarray:
+        return visualizer.draw(frame, source_image)
+
+
+class _TripwireTrack:
+    def __init__(
+        self,
+        p1: tuple[float, float],
+        p2: tuple[float, float],
+        inside_point: tuple[float, float],
+        bucket: str,
+        metadata: DataSourceInfo,
+        settings: Settings,
+        max_lost_frames: int,
+        half_life_time: int | None = None,
+    ) -> None:
+        self._bucket = bucket
+        self._height = metadata.height
+        self._width = metadata.width
+        builder = (
+            TripwireHeatmapBuilder()
+            .with_height(metadata.height)
+            .with_width(metadata.width)
+            .with_frames(metadata.frames)
+            .with_fps(metadata.fps)
+            .with_momentum_buffer_size(settings.momentum_buffer_size)
+            .with_max_lost_frames(max_lost_frames)
+            .with_tripwire(p1, p2, inside_point)
+        )
+        if half_life_time is not None:
+            builder = builder.with_half_life_time(half_life_time)
+        self._heatmap = builder.build()
+        self._line_visualizer: TripwireHeatmapVisualizer | None = None
+
+    def apply_decay(self) -> None:
+        self._heatmap.apply_decay()
+
+    def handle(self, updates: list) -> None:
+        self._heatmap.handle(updates)
+
+    def flush(self, lost_updates: list) -> None:
+        # Tripwire is Roi-backed; RoiHeatmap.execute_track_update_batch()
+        # raises NotImplementedError for lost-track flushing.
+        pass
+
+    def frame(self) -> np.ndarray:
+        bucket = self._heatmap.get_heatmap().get(self._bucket)
+        if bucket is None:
+            return np.zeros((self._height, self._width), dtype=np.float32)
+        return bucket
+
+    def draw(
+        self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
+    ) -> np.ndarray:
+        if self._line_visualizer is None:
+            self._line_visualizer = TripwireHeatmapVisualizer(
+                visualizer, *self._heatmap.get_tripwire()
+            )
+        return self._line_visualizer.draw(frame, source_image)
+
+
+class _RoiTrack:
+    def __init__(
+        self,
+        polygon: Sequence[tuple[float, float]],
+        bucket: str,
+        metadata: DataSourceInfo,
+        settings: Settings,
+        max_lost_frames: int,
+        half_life_time: int | None = None,
+    ) -> None:
+        self._bucket = bucket
+        self._height = metadata.height
+        self._width = metadata.width
+        builder = (
+            RoiHeatmapBuilder()
+            .with_height(metadata.height)
+            .with_width(metadata.width)
+            .with_frames(metadata.frames)
+            .with_fps(metadata.fps)
+            .with_momentum_buffer_size(settings.momentum_buffer_size)
+            .with_max_lost_frames(max_lost_frames)
+            .with_polygon(polygon)
+        )
+        if half_life_time is not None:
+            builder = builder.with_half_life_time(half_life_time)
+        self._heatmap = builder.build()
+        self._polygon_visualizer: RoiHeatmapVisualizer | None = None
+
+    def apply_decay(self) -> None:
+        self._heatmap.apply_decay()
+
+    def handle(self, updates: list) -> None:
+        self._heatmap.handle(updates)
+
+    def flush(self, lost_updates: list) -> None:
+        # RoiHeatmap.execute_track_update_batch() raises NotImplementedError
+        # for lost-track flushing.
+        pass
+
+    def frame(self) -> np.ndarray:
+        bucket = self._heatmap.get_heatmap().get(self._bucket)
+        if bucket is None:
+            return np.zeros((self._height, self._width), dtype=np.float32)
+        return bucket
+
+    def draw(
+        self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
+    ) -> np.ndarray:
+        if self._polygon_visualizer is None:
+            self._polygon_visualizer = RoiHeatmapVisualizer(
+                visualizer, self._heatmap.get_polygon()
+            )
+        return self._polygon_visualizer.draw(frame, source_image)
+
 
 def _build_track(
     heatmap_request: dict[str, Any],
@@ -207,6 +339,26 @@ def _build_track(
             settings,
             max_lost_frames,
             heatmap_request.get("half_life_time")
+        )
+    if heatmap_type == "tripwire":
+        return _TripwireTrack(
+            tuple(heatmap_request["p1"]),
+            tuple(heatmap_request["p2"]),
+            tuple(heatmap_request["inside_point"]),
+            heatmap_request["bucket"],
+            metadata,
+            settings,
+            max_lost_frames,
+            heatmap_request.get("half_life_time"),
+        )
+    if heatmap_type == "roi":
+        return _RoiTrack(
+            [tuple(p) for p in heatmap_request["polygon"]],
+            heatmap_request["bucket"],
+            metadata,
+            settings,
+            max_lost_frames,
+            heatmap_request.get("half_life_time"),
         )
 
     raise PipelineError(f"Unsupported heatmap type: {heatmap_type!r}")
@@ -273,4 +425,4 @@ def run(
         lost_updates = momentum.flush_lost_tracks_buffers(set(track_ids))
         track.flush(lost_updates)
 
-        yield visualizer.draw(track.frame(), source_image)
+        yield track.draw(visualizer, track.frame(), source_image)

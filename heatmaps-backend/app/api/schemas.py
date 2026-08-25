@@ -83,7 +83,38 @@ class ClusterHeatmapRequest(BaseModel):
     visualizer: HeatmapVisualizerRequest | None = None
 
 
+RegionBucket = Literal["inside", "outside", "inside->outside", "outside->inside"]
+
+
+class TripwireHeatmapRequest(BaseModel):
+    type: Literal["tripwire"]
+    p1: Point
+    p2: Point
+    inside_point: Point
+    bucket: RegionBucket
+    half_life_time: int | None = Field(default=None, gt=0)
+    visualizer: HeatmapVisualizerRequest | None = None
+
+    @model_validator(mode="after")
+    def _check_distinct_points(self) -> "TripwireHeatmapRequest":
+        if self.p1 == self.p2:
+            raise ValueError("p1 and p2 must be distinct points")
+        return self
+
+
+class RoiHeatmapRequest(BaseModel):
+    type: Literal["roi"]
+    polygon: list[Point] = Field(min_length=3)
+    bucket: RegionBucket
+    half_life_time: int | None = Field(default=None, gt=0)
+    visualizer: HeatmapVisualizerRequest | None = None
+
+
 HeatmapRequest = Annotated[
-    DirectionalHeatmapRequest | SpeedHeatmapRequest | ClusterHeatmapRequest,
+    DirectionalHeatmapRequest
+    | SpeedHeatmapRequest
+    | ClusterHeatmapRequest
+    | TripwireHeatmapRequest
+    | RoiHeatmapRequest,
     Field(discriminator="type"),
 ]

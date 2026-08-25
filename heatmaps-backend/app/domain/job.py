@@ -42,6 +42,12 @@ def build_label(heatmap_request: dict[str, Any]) -> str:
     if heatmap_type == "cluster":
         return f"Cluster size {heatmap_request['group_size']}"
 
+    if heatmap_type == "tripwire":
+        return f"Tripwire — {heatmap_request['bucket']}"
+
+    if heatmap_type == "roi":
+        return f"ROI — {heatmap_request['bucket']}"
+
     raise ValueError(f"Unknown heatmap type: {heatmap_type!r}")
 
 

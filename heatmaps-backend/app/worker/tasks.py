@@ -12,7 +12,7 @@ from typing import Any, Protocol
 from rq import get_current_job
 
 from app.config import Settings, get_settings
-from app.domain.job import build_label
+from app.domain.job import build_composed_label, build_label
 from app.services import pipeline
 from app.services.mp4_encoder import Mp4Encoder
 from app.services.storage import job_output_path, job_output_url
@@ -83,10 +83,15 @@ def run_job(
 
         encoder.close()
 
+        if heatmap_request["type"] == "composed":
+            label = build_composed_label(heatmap_request["layers"])
+        else:
+            label = build_label(heatmap_request)
+
         job.meta["progress"] = 100
         job.meta["output"] = {
             "type": heatmap_request["type"],
-            "label": build_label(heatmap_request),
+            "label": label,
             "video_url": job_output_url(base_url, job_id),
         }
         job.save_meta()

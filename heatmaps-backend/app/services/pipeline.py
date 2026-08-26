@@ -26,6 +26,7 @@ from core.heatmap.clusters.cluster_heatmap_builder import ClusterHeatmapBuilder
 from core.heatmap.directional.directional_heatmap_builder import (
     DirectionalHeatmapBuilder,
 )
+from core.heatmap.logic.logic import HeatmapLogic
 from core.heatmap.roi.roi_heatmap_builder import RoiHeatmapBuilder
 from core.heatmap.speed.speed_filter import SpeedFilter
 from core.heatmap.speed.speed_heatmap_builder import SpeedHeatmapBuilder
@@ -51,9 +52,7 @@ class _HeatmapTrack(Protocol):
     def handle(self, updates: list) -> None: ...
     def flush(self, lost_updates: list) -> None: ...
     def frame(self) -> np.ndarray: ...
-    def draw(
-        self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
-    ) -> np.ndarray: ...
+    def draw_overlay(self, frame: np.ndarray) -> np.ndarray: ...
 
 
 class _DirectionalTrack:
@@ -91,10 +90,8 @@ class _DirectionalTrack:
     def frame(self) -> np.ndarray:
         return self._heatmap.get_heatmap()[self._direction]
 
-    def draw(
-        self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
-    ) -> np.ndarray:
-        return visualizer.draw(frame, source_image)
+    def draw_overlay(self, frame: np.ndarray) -> np.ndarray:
+        return frame
 
 
 class _SpeedTrack:
@@ -141,10 +138,8 @@ class _SpeedTrack:
     def frame(self) -> np.ndarray:
         return self._heatmap.get_heatmap()[self._FILTER_NAME]
 
-    def draw(
-        self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
-    ) -> np.ndarray:
-        return visualizer.draw(frame, source_image)
+    def draw_overlay(self, frame: np.ndarray) -> np.ndarray:
+        return frame
 
 
 class _ClusterTrack:
@@ -189,10 +184,8 @@ class _ClusterTrack:
             return np.zeros((self._height, self._width), dtype=np.float32)
         return bucket
 
-    def draw(
-        self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
-    ) -> np.ndarray:
-        return visualizer.draw(frame, source_image)
+    def draw_overlay(self, frame: np.ndarray) -> np.ndarray:
+        return frame
 
 
 class _TripwireTrack:
@@ -242,11 +235,8 @@ class _TripwireTrack:
             return np.zeros((self._height, self._width), dtype=np.float32)
         return bucket
 
-    def draw(
-        self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
-    ) -> np.ndarray:
-        background = visualizer.draw(frame, source_image)
-        return self._line_visualizer.draw(background)
+    def draw_overlay(self, frame: np.ndarray) -> np.ndarray:
+        return self._line_visualizer.draw(frame)
 
 
 class _RoiTrack:
@@ -294,11 +284,8 @@ class _RoiTrack:
             return np.zeros((self._height, self._width), dtype=np.float32)
         return bucket
 
-    def draw(
-        self, visualizer: HeatmapVisualizer, frame: np.ndarray, source_image: np.ndarray
-    ) -> np.ndarray:
-        background = visualizer.draw(frame, source_image)
-        return self._polygon_visualizer.draw(background)
+    def draw_overlay(self, frame: np.ndarray) -> np.ndarray:
+        return self._polygon_visualizer.draw(frame)
 
 
 def _build_track(
@@ -358,6 +345,21 @@ def _build_track(
     raise PipelineError(f"Unsupported heatmap type: {heatmap_type!r}")
 
 
+def _normalize_layers(heatmap_request: dict[str, Any]) -> list[dict[str, Any]]:
+    """Both request shapes reduce to an ordered list of layers: a legacy
+    single-primitive request is just the 1-layer case, with no operator."""
+    if heatmap_request["type"] == "composed":
+        return [
+            {
+                "heatmap": layer["heatmap"],
+                "operator": layer.get("operator"),
+                "invert": layer.get("invert", False),
+            }
+            for layer in heatmap_request["layers"]
+        ]
+    return [{"heatmap": heatmap_request, "operator": None, "invert": False}]
+
+
 def read_metadata(video_path: Path) -> DataSourceInfo:
     metadata = DataSourceInfoReader(video_path).read()
     if not metadata.fps or metadata.fps <= 0:
@@ -382,7 +384,14 @@ def run(
         "track_buffer", settings.default_max_lost_frames
     )
 
-    track = _build_track(heatmap_request, metadata, settings, max_lost_frames)
+    tracks = [
+        (
+            _build_track(layer["heatmap"], metadata, settings, max_lost_frames),
+            layer["operator"],
+            layer["invert"],
+        )
+        for layer in _normalize_layers(heatmap_request)
+    ]
 
     model = YOLOModel(str(video_path))
     raw_predictions = model.run_tracking(show=False, stream=True)
@@ -406,7 +415,8 @@ def run(
         processed = predictions_adapter.to_predictions(raw_prediction)
         source_image = raw_prediction.orig_img
 
-        track.apply_decay()
+        for track, _, _ in tracks:
+            track.apply_decay()
 
         clamped_points = PointUtil.clamp_points_to_heatmap_points(
             processed.points, metadata.width, metadata.height
@@ -414,9 +424,29 @@ def run(
         track_ids = [point.track_id for point in processed.points]
         updates = momentum.update_batch(track_ids, clamped_points)
 
-        track.handle(updates)
+        for track, _, _ in tracks:
+            track.handle(updates)
 
         lost_updates = momentum.flush_lost_tracks_buffers(set(track_ids))
-        track.flush(lost_updates)
+        for track, _, _ in tracks:
+            track.flush(lost_updates)
 
-        yield track.draw(visualizer, track.frame(), source_image)
+        cumulative: HeatmapLogic | None = None
+        for track, operator, invert in tracks:
+            layer_frame = track.frame()
+            if invert:
+                layer_frame = HeatmapLogic(layer_frame).negate().result()
+            if cumulative is None:
+                cumulative = HeatmapLogic(layer_frame)
+            elif operator == "AND":
+                cumulative.and_(layer_frame)
+            elif operator == "OR":
+                cumulative.or_(layer_frame)
+            elif operator == "AND_NOT":
+                cumulative.and_not(layer_frame)
+
+        assert cumulative is not None  # tracks is never empty
+        background = visualizer.draw(cumulative.result(), source_image)
+        for track, _, _ in tracks:
+            background = track.draw_overlay(background)
+        yield background

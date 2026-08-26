@@ -11,7 +11,7 @@ from rq.exceptions import NoSuchJobError
 from rq.job import Job as RQJob
 
 from app.api.errors import ApiError
-from app.api.schemas import HeatmapJobResponse, HeatmapRequest
+from app.api.schemas import HeatmapJobRequest, HeatmapJobResponse
 from app.config import get_settings
 from app.domain.job import JobState, JobStatus
 from app.services.storage import load_calibration_matrix, new_id, video_source_path
@@ -28,7 +28,7 @@ _POLL_INTERVAL_SECONDS = 1.0
     status_code=202,
 )
 async def create_heatmap_job(
-    video_id: str, request: Request, heatmap_request: HeatmapRequest
+    video_id: str, request: Request, heatmap_request: HeatmapJobRequest
 ) -> HeatmapJobResponse:
     settings = get_settings()
     source_path = video_source_path(settings, video_id)

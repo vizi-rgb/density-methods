@@ -23,6 +23,12 @@ class HeatmapLogic:
         self.heatmap = np.maximum(self.heatmap, other.heatmap)
         return self
 
+    def and_not(self, other: "HeatmapLogic | np.ndarray") -> "HeatmapLogic":
+        if isinstance(other, np.ndarray):
+            other = self._wrap(other)
+        self.heatmap = np.where(other.heatmap != 0, 0, self.heatmap)
+        return self
+
     def result(self) -> np.ndarray:
         return self.heatmap
 

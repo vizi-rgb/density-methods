@@ -118,3 +118,40 @@ HeatmapRequest = Annotated[
     | RoiHeatmapRequest,
     Field(discriminator="type"),
 ]
+
+
+Operator = Literal["AND", "OR", "AND_NOT"]
+
+
+class HeatmapLayer(BaseModel):
+    heatmap: HeatmapRequest
+    operator: Operator | None = None
+    invert: bool = False
+
+
+class ComposedHeatmapRequest(BaseModel):
+    type: Literal["composed"] = "composed"
+    layers: list[HeatmapLayer] = Field(min_length=1)
+    visualizer: HeatmapVisualizerRequest | None = None
+
+    @model_validator(mode="after")
+    def _check_operators(self) -> "ComposedHeatmapRequest":
+        if self.layers[0].operator is not None:
+            raise ValueError("the first layer must not specify an operator")
+        for layer in self.layers[1:]:
+            if layer.operator is None:
+                raise ValueError(
+                    "every layer after the first must specify an operator"
+                )
+        return self
+
+
+HeatmapJobRequest = Annotated[
+    DirectionalHeatmapRequest
+    | SpeedHeatmapRequest
+    | ClusterHeatmapRequest
+    | TripwireHeatmapRequest
+    | RoiHeatmapRequest
+    | ComposedHeatmapRequest,
+    Field(discriminator="type"),
+]

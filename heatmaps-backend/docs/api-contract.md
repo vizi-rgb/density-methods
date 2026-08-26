@@ -72,6 +72,31 @@ All five types also accept an optional `visualizer` object — rendering tuning 
 
 All three fields are required together — there's no way to override just one and default the others. Omit `visualizer` entirely to use the server's configured defaults (`heatmap_fixed_max`/`heatmap_alpha`/`heatmap_sigma` in `app/config.py`, currently `3.0`/`0.5`/`25.0`).
 
+### Composed jobs (`type: "composed"`)
+
+A sixth request shape combines two or more of the five primitive types above into one job via `HeatmapLogic` (`lib/core/heatmap/logic/logic.py`), applied per-frame before rendering:
+
+```json
+{
+  "type": "composed",
+  "layers": [
+    { "heatmap": { "type": "speed", "min_speed": 7 } },
+    { "heatmap": { "type": "directional", "direction": "up" }, "operator": "AND" },
+    { "heatmap": { "type": "roi", "polygon": [[500, 400], [1300, 400], [1300, 750], [500, 750]], "bucket": "inside" }, "operator": "AND_NOT" }
+  ],
+  "visualizer": { "fixed_max": 1.0, "alpha": 0.9, "sigma": 5.0 }
+}
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `layers` | array, ≥ 1 entries | Evaluated in order. Each entry: `heatmap` (any of the 5 primitive request bodies above, same validation rules as standalone), `operator` (`"AND"`/`"OR"`/`"AND_NOT"`, required on every layer **except** the first — the first layer must omit it), `invert` (bool, default `false` — flips that layer's condition, e.g. "NOT inside ROI", before it's combined into the running result). |
+| `visualizer` | object, optional | Same shape as the standalone `visualizer` object, but **job-level**: the combined heatmap is blended onto the frame once, not once per layer. A `visualizer` object nested inside an individual layer's `heatmap` is accepted (for schema reuse with the standalone types) but **ignored** — only the job-level one has any effect. |
+
+Rendered overlay draws all layers' geometric shapes (tripwire lines / ROI polygons) on top of the single combined-heatmap blend.
+
+The job's `label` (see `GET /api/heatmaps/{job_id}` below) for a composed job is a generated natural-language readout, e.g. `"Show tracks matching (Speed ≥7 km/h) AND (Moving Up) BUT NOT (Inside ROI)"` — parenthesized per layer, joined by `AND`/`OR`/`BUT NOT` (for `AND_NOT`), with `NOT (...)` wrapping any layer with `invert: true`.
+
 **Response `202 Accepted`:** `{ "job_id": "..." }`
 
 **Error responses:** `404` (`video_not_found`) if `video_id` doesn't exist, `400` (`invalid_request`) for any of the per-type validation above.
@@ -112,7 +137,7 @@ Point-in-time snapshot of one job — used by the frontend to recover state afte
 }
 ```
 
-`output` is a **single object** — one job always produces exactly one result. `label` is a ready-to-display string built from the request (`"Directional — right"`, `"Speed ≥3.5 km/h"`, `"Speed 3.5–10 km/h"`, `"Speed (any)"`, `"Cluster size 3"`, `"Tripwire — inside"`, `"ROI — outside->inside"`).
+`output` is a **single object** — one job always produces exactly one result. `label` is a ready-to-display string built from the request (`"Directional — right"`, `"Speed ≥3.5 km/h"`, `"Speed 3.5–10 km/h"`, `"Speed (any)"`, `"Cluster size 3"`, `"Tripwire — inside"`, `"ROI — outside->inside"`). For a composed job, `output.type` is `"composed"` and `label` is the generated readout described above (e.g. `"Show tracks matching (Speed ≥7 km/h) AND (Moving Up) BUT NOT (Inside ROI)"`).
 
 **Error responses:** `404` (`job_not_found`) — unknown or expired job.
 

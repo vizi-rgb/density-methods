@@ -21,6 +21,18 @@ class VideoOutput(BaseModel):
     video_url: str
 
 
+def _speed_phrase(heatmap_request: dict[str, Any]) -> str:
+    min_speed = heatmap_request.get("min_speed")
+    max_speed = heatmap_request.get("max_speed")
+    if min_speed is not None and max_speed is not None:
+        return f"Speed {min_speed}–{max_speed} km/h"
+    if min_speed is not None:
+        return f"Speed ≥{min_speed} km/h"
+    if max_speed is not None:
+        return f"Speed ≤{max_speed} km/h"
+    return "Speed (any)"
+
+
 def build_label(heatmap_request: dict[str, Any]) -> str:
     """Human label for a heatmap request, e.g. for `VideoOutput.label`."""
     heatmap_type = heatmap_request["type"]
@@ -29,15 +41,7 @@ def build_label(heatmap_request: dict[str, Any]) -> str:
         return f"Directional — {heatmap_request['direction']}"
 
     if heatmap_type == "speed":
-        min_speed = heatmap_request.get("min_speed")
-        max_speed = heatmap_request.get("max_speed")
-        if min_speed is not None and max_speed is not None:
-            return f"Speed {min_speed}–{max_speed} km/h"
-        if min_speed is not None:
-            return f"Speed ≥{min_speed} km/h"
-        if max_speed is not None:
-            return f"Speed ≤{max_speed} km/h"
-        return "Speed (any)"
+        return _speed_phrase(heatmap_request)
 
     if heatmap_type == "cluster":
         return f"Cluster size {heatmap_request['group_size']}"
@@ -49,6 +53,69 @@ def build_label(heatmap_request: dict[str, Any]) -> str:
         return f"ROI — {heatmap_request['bucket']}"
 
     raise ValueError(f"Unknown heatmap type: {heatmap_type!r}")
+
+
+_DIRECTION_PHRASES = {
+    "up": "Moving Up",
+    "down": "Moving Down",
+    "left": "Moving Left",
+    "right": "Moving Right",
+    "static": "Stationary",
+    "all": "Any Direction",
+}
+
+_REGION_BUCKET_PHRASES = {
+    "inside": "Inside",
+    "outside": "Outside",
+    "inside->outside": "Exiting",
+    "outside->inside": "Entering",
+}
+
+_OPERATOR_WORDS = {
+    "AND": "AND",
+    "OR": "OR",
+    "AND_NOT": "BUT NOT",
+}
+
+
+def _layer_condition_phrase(heatmap_request: dict[str, Any]) -> str:
+    """Short, human-readable phrase for one layer's primitive condition,
+    used to build the composed-job natural-language readout."""
+    heatmap_type = heatmap_request["type"]
+
+    if heatmap_type == "directional":
+        return _DIRECTION_PHRASES[heatmap_request["direction"]]
+
+    if heatmap_type == "speed":
+        return _speed_phrase(heatmap_request)
+
+    if heatmap_type == "cluster":
+        return f"Cluster Size {heatmap_request['group_size']}"
+
+    if heatmap_type == "tripwire":
+        return f"{_REGION_BUCKET_PHRASES[heatmap_request['bucket']]} Tripwire"
+
+    if heatmap_type == "roi":
+        return f"{_REGION_BUCKET_PHRASES[heatmap_request['bucket']]} ROI"
+
+    raise ValueError(f"Unknown heatmap type: {heatmap_type!r}")
+
+
+def build_composed_label(layers: list[dict[str, Any]]) -> str:
+    """Natural-language readout for a composed (layered) heatmap job, e.g.
+    "Show tracks matching (Speed ≥7 km/h) AND (Moving Up) BUT NOT (Inside ROI)".
+    """
+    parts: list[str] = []
+    for i, layer in enumerate(layers):
+        phrase = _layer_condition_phrase(layer["heatmap"])
+        if layer.get("invert"):
+            phrase = f"NOT {phrase}"
+        phrase = f"({phrase})"
+        if i == 0:
+            parts.append(phrase)
+        else:
+            parts.append(f"{_OPERATOR_WORDS[layer['operator']]} {phrase}")
+    return "Show tracks matching " + " ".join(parts)
 
 
 _RQ_QUEUED_STATUSES = {

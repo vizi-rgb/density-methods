@@ -1,7 +1,7 @@
 from rq.job import Job
 from rq.job import JobStatus as RQJobStatus
 
-from app.domain.job import JobState, JobStatus, build_label
+from app.domain.job import JobState, JobStatus, build_composed_label, build_label
 
 
 def _noop() -> None:
@@ -101,4 +101,53 @@ def test_build_label_roi() -> None:
     assert (
         build_label({"type": "roi", "bucket": "outside->inside"})
         == "ROI — outside->inside"
+    )
+
+
+def test_build_composed_label_example_from_the_spec() -> None:
+    layers = [
+        {"heatmap": {"type": "speed", "min_speed": 7}},
+        {"heatmap": {"type": "directional", "direction": "up"}, "operator": "AND"},
+        {
+            "heatmap": {"type": "roi", "bucket": "inside"},
+            "operator": "AND_NOT",
+        },
+    ]
+
+    assert build_composed_label(layers) == (
+        "Show tracks matching (Speed ≥7 km/h) AND (Moving Up) BUT NOT (Inside ROI)"
+    )
+
+
+def test_build_composed_label_supports_or() -> None:
+    layers = [
+        {"heatmap": {"type": "directional", "direction": "left"}},
+        {"heatmap": {"type": "directional", "direction": "right"}, "operator": "OR"},
+    ]
+
+    assert build_composed_label(layers) == (
+        "Show tracks matching (Moving Left) OR (Moving Right)"
+    )
+
+
+def test_build_composed_label_applies_per_layer_invert() -> None:
+    layers = [
+        {"heatmap": {"type": "roi", "bucket": "inside"}, "invert": True},
+        {
+            "heatmap": {"type": "cluster", "group_size": 3},
+            "operator": "AND",
+            "invert": True,
+        },
+    ]
+
+    assert build_composed_label(layers) == (
+        "Show tracks matching (NOT Inside ROI) AND (NOT Cluster Size 3)"
+    )
+
+
+def test_build_composed_label_single_layer() -> None:
+    layers = [{"heatmap": {"type": "tripwire", "bucket": "outside->inside"}}]
+
+    assert build_composed_label(layers) == (
+        "Show tracks matching (Entering Tripwire)"
     )

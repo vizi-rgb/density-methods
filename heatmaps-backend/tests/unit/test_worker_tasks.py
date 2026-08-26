@@ -83,6 +83,48 @@ def test_run_job_success_sets_progress_and_output(tmp_path, monkeypatch) -> None
     assert len(encoder.frames_written) == 2
 
 
+def test_run_job_success_uses_composed_label_for_composed_requests(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(tasks_module.pipeline, "read_metadata", lambda path: _METADATA)
+    monkeypatch.setattr(
+        tasks_module.pipeline,
+        "run",
+        lambda video_path, metadata, heatmap_request, settings, transformation_matrix: iter(
+            [_FRAME]
+        ),
+    )
+    monkeypatch.setattr(tasks_module, "Mp4Encoder", _FakeEncoder)
+
+    composed_request = {
+        "type": "composed",
+        "layers": [
+            {"heatmap": {"type": "speed", "min_speed": 7}},
+            {
+                "heatmap": {"type": "directional", "direction": "up"},
+                "operator": "AND",
+            },
+        ],
+    }
+    job = _FakeJob()
+    settings = Settings(data_dir=tmp_path)
+
+    tasks_module.run_job(
+        job,
+        "job-composed",
+        Path("/fake/video.mp4"),
+        composed_request,
+        "http://x/",
+        _MATRIX,
+        settings,
+    )
+
+    assert job.meta["output"]["type"] == "composed"
+    assert job.meta["output"]["label"] == (
+        "Show tracks matching (Speed ≥7 km/h) AND (Moving Up)"
+    )
+
+
 def test_run_job_failure_records_error_and_kills_encoder(tmp_path, monkeypatch) -> None:
     def _failing_run(video_path, metadata, heatmap_request, settings, transformation_matrix):
         yield _FRAME

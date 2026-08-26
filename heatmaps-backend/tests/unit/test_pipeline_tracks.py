@@ -6,6 +6,7 @@ from app.config import Settings
 from app.services.pipeline import (
     _ClusterTrack,
     _DirectionalTrack,
+    _normalize_layers,
     _RoiTrack,
     _SpeedTrack,
     _TripwireTrack,
@@ -274,3 +275,69 @@ def test_roi_track_only_populates_requested_bucket() -> None:
     frame = track.frame()
 
     assert frame.sum() == 0
+
+
+def test_directional_speed_cluster_draw_overlay_is_identity() -> None:
+    frame = np.full((100, 100, 3), 7, dtype=np.uint8)
+
+    directional = _DirectionalTrack("right", _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+    speed = _SpeedTrack(None, None, _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+    cluster = _ClusterTrack(2, _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+
+    assert directional.draw_overlay(frame) is frame
+    assert speed.draw_overlay(frame) is frame
+    assert cluster.draw_overlay(frame) is frame
+
+
+def test_tripwire_draw_overlay_draws_the_line_on_top() -> None:
+    background = np.zeros((100, 100, 3), dtype=np.uint8)
+    track = _TripwireTrack(
+        (50, 0), (50, 100), (90, 50), "inside", _METADATA, _SETTINGS, _MAX_LOST_FRAMES
+    )
+
+    overlay = track.draw_overlay(background)
+
+    assert overlay.sum() > 0
+
+
+def test_roi_draw_overlay_draws_the_polygon_on_top() -> None:
+    background = np.zeros((100, 100, 3), dtype=np.uint8)
+    polygon = [(50, 0), (100, 0), (100, 100), (50, 100)]
+    track = _RoiTrack(polygon, "inside", _METADATA, _SETTINGS, _MAX_LOST_FRAMES)
+
+    overlay = track.draw_overlay(background)
+
+    assert overlay.sum() > 0
+
+
+def test_normalize_layers_wraps_a_legacy_single_primitive_request() -> None:
+    request = {"type": "speed", "min_speed": 7}
+
+    layers = _normalize_layers(request)
+
+    assert layers == [{"heatmap": request, "operator": None, "invert": False}]
+
+
+def test_normalize_layers_extracts_a_composed_request() -> None:
+    request = {
+        "type": "composed",
+        "layers": [
+            {"heatmap": {"type": "speed", "min_speed": 7}},
+            {
+                "heatmap": {"type": "directional", "direction": "up"},
+                "operator": "AND",
+                "invert": True,
+            },
+        ],
+    }
+
+    layers = _normalize_layers(request)
+
+    assert layers == [
+        {"heatmap": {"type": "speed", "min_speed": 7}, "operator": None, "invert": False},
+        {
+            "heatmap": {"type": "directional", "direction": "up"},
+            "operator": "AND",
+            "invert": True,
+        },
+    ]

@@ -7,16 +7,22 @@ class TrackedPoint(NamedTuple):
     y: int
 
 
+class WorldPoint(NamedTuple):
+    x: float
+    y: float
+
+
 @dataclass(frozen=True)
 class TrackUpdate:
     was_tracked: bool
     first_point: TrackedPoint | None
-    first_point_world: TrackedPoint | None
+    first_point_world: WorldPoint | None
     last_point: TrackedPoint | None
-    last_point_world: TrackedPoint | None
+    last_point_world: WorldPoint | None
     current_point: TrackedPoint | None
-    current_point_world: TrackedPoint | None
+    current_point_world: WorldPoint | None
     direction_label: str | None
+    direction_label_world: str | None
     speed_px_per_s: float | None
     speed_km_per_h: float | None
     track_id: int | None
@@ -24,4 +30,4 @@ class TrackUpdate:
     # emits when particular segments are processed, so when an appropriate update should happen in handlers
     # this is to ensure that noise does not affect the evaluated metrics
     processed_segments: List[Tuple[TrackedPoint, TrackedPoint]]
-    processed_segments_world: List[Tuple[TrackedPoint, TrackedPoint]]
+    processed_segments_world: List[Tuple[WorldPoint, WorldPoint]]

@@ -5,7 +5,7 @@ import numpy as np
 
 from core.momentum.camera_to_world_mapper import CameraToWorldMapper
 from core.momentum.direction import DirectionUtil
-from core.momentum.domain import TrackedPoint, TrackUpdate
+from core.momentum.domain import TrackedPoint, TrackUpdate, WorldPoint
 from core.momentum.speed import SpeedUtil
 
 
@@ -41,7 +41,7 @@ class MomentumTracker:
             for track_id, point in zip(track_ids, current_pos_list)
         ]
 
-    def update(self, track_id: int, current_pos: TrackedPoint, current_world_pos: TrackedPoint | None) -> TrackUpdate:
+    def update(self, track_id: int, current_pos: TrackedPoint, current_world_pos: WorldPoint | None) -> TrackUpdate:
         if not _should_be_tracked(track_id):
             return TrackUpdate(
                 was_tracked=False,
@@ -52,6 +52,7 @@ class MomentumTracker:
                 current_point=None,
                 current_point_world=None,
                 direction_label=None,
+                direction_label_world=None,
                 speed_px_per_s=None,
                 speed_km_per_h=None,
                 processed_segments=[],
@@ -75,6 +76,7 @@ class MomentumTracker:
                 current_point=current_pos,
                 current_point_world=current_world_pos,
                 direction_label=None,
+                direction_label_world=None,
                 speed_px_per_s=None,
                 speed_km_per_h=None,
                 processed_segments=[],
@@ -84,14 +86,18 @@ class MomentumTracker:
 
         first_point = history[0]
         last_point = history[-1]
+        frames_cnt = len(history)
         processed_segments: List[Tuple[TrackedPoint, TrackedPoint]] = []
         direction: str = self.get_direction_label(first_point, current_pos)
-        speed: float = self._get_camera_speed(first_point, current_pos, self.momentum_buffer_size)
+        speed: float = self._get_camera_speed(first_point, current_pos, frames_cnt)
         real_speed: float | None = None
+        direction_world: str | None = None
+
+        first_point_world, last_point_world = self.camera_to_world_mapper.map_batch([first_point, last_point]) if self.camera_to_world_mapper else (None, None)
 
         if current_world_pos and self.camera_to_world_mapper:
-            first_point_world = self.camera_to_world_mapper.map(first_point)
-            real_speed = self._get_real_speed(first_point_world, current_world_pos, track_id, self.momentum_buffer_size)
+            real_speed = self._get_real_speed(first_point_world, current_world_pos, track_id, frames_cnt)
+            direction_world = self.get_direction_label(first_point_world, current_world_pos, DirectionUtil.WORLD_STATIC_THRESHOLD)
 
         history.append(current_pos)
         if len(history) == self.momentum_buffer_size:
@@ -100,7 +106,6 @@ class MomentumTracker:
             processed_segments = self._peek_momentum_buffer(track_id)
 
         processed_segments_world = self._map_processed_segments_to_processed_segments_world(processed_segments) if self.camera_to_world_mapper else []
-        first_point_world, last_point_world = self.camera_to_world_mapper.map_batch([first_point, last_point]) if self.camera_to_world_mapper else (None, None)
         return TrackUpdate(
             was_tracked=True,
             first_point=first_point,
@@ -110,6 +115,7 @@ class MomentumTracker:
             current_point=current_pos,
             current_point_world=current_world_pos,
             direction_label=direction,
+            direction_label_world=direction_world,
             speed_px_per_s=speed,
             speed_km_per_h=real_speed,
             processed_segments=processed_segments,
@@ -135,6 +141,7 @@ class MomentumTracker:
                 were_segments_processed = len(history) >= self.momentum_buffer_size - 1
                 if len(history) == 0 or were_segments_processed:
                     self.id_pos_tracker.pop(track_id)
+                    self.id_speed_tracker.pop(track_id, None)
                     continue
 
                 first_point, last_point, frames_cnt = (
@@ -146,12 +153,14 @@ class MomentumTracker:
                 direction = self.get_direction_label(first_point, last_point)
                 speed = self._get_camera_speed(first_point, last_point, frames_cnt)
                 real_speed = None
+                direction_world = None
+                first_point_world, last_point_world = (None, None)
                 if self.camera_to_world_mapper:
-                    p1_world, p2_world = self.camera_to_world_mapper.map_batch([first_point, last_point])
-                    real_speed = self._get_real_speed(p1_world, p2_world, track_id, frames_cnt)
+                    first_point_world, last_point_world = self.camera_to_world_mapper.map_batch([first_point, last_point])
+                    real_speed = self._get_real_speed(first_point_world, last_point_world, track_id, frames_cnt)
+                    direction_world = self.get_direction_label(first_point_world, last_point_world, DirectionUtil.WORLD_STATIC_THRESHOLD)
 
                 flushed_segments_world = self._map_processed_segments_to_processed_segments_world(flushed_segments) if self.camera_to_world_mapper else []
-                first_point_world, last_point_world = self.camera_to_world_mapper.map_batch([first_point, last_point]) if self.camera_to_world_mapper else (None, None)
                 track_updates.append(
                     TrackUpdate(
                         was_tracked=True,
@@ -162,6 +171,7 @@ class MomentumTracker:
                         current_point=None,
                         current_point_world=None,
                         direction_label=direction,
+                        direction_label_world=direction_world,
                         speed_px_per_s=speed,
                         speed_km_per_h=real_speed,
                         processed_segments=flushed_segments,
@@ -170,6 +180,7 @@ class MomentumTracker:
                     )
                 )
                 self.id_pos_tracker.pop(track_id)
+                self.id_speed_tracker.pop(track_id, None)
 
         return track_updates
 
@@ -226,7 +237,7 @@ class MomentumTracker:
     def _get_camera_speed(self, p1: TrackedPoint, p2: TrackedPoint, frames_cnt: int):
         return SpeedUtil.get_speed(p1, p2, frames_cnt / self.fps)
 
-    def _get_real_speed(self, p1: TrackedPoint, p2: TrackedPoint, track_id: int, frames_cnt: int):
+    def _get_real_speed(self, p1: WorldPoint, p2: WorldPoint, track_id: int, frames_cnt: int):
         intermediate_real_speed = SpeedUtil.meters_per_s_to_kilometers_per_h(
             SpeedUtil.get_speed(
                 p1, p2, frames_cnt / self.fps
@@ -239,6 +250,6 @@ class MomentumTracker:
         speed_history = self.id_speed_tracker[track_id]
         return np.median(speed_history)
 
-    def _map_processed_segments_to_processed_segments_world(self, processed_segments: List[Tuple[TrackedPoint, TrackedPoint]]):
+    def _map_processed_segments_to_processed_segments_world(self, processed_segments: List[Tuple[TrackedPoint, TrackedPoint]]) -> List[Tuple[WorldPoint, WorldPoint]]:
         return [(self.camera_to_world_mapper.map(p1), self.camera_to_world_mapper.map(p2)) for p1, p2 in processed_segments]
 

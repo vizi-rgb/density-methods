@@ -27,14 +27,21 @@ src/
     FileUpload.tsx        # file input + submit only — no options
     VideoPreview.tsx       # raw upload playback
     PerspectiveCalibrator.tsx # 4-point calibration on a captured video frame (Konva)
-    HeatmapMenu.tsx          # category + per-category params + Add
+    HeatmapMenu.tsx          # Simple/Composed mode toggle + Add
+    PrimitiveHeatmapFields.tsx # category + per-category params (shared: Simple mode & one composer layer)
+    VisualizerFields.tsx       # the 3-field visualizer fieldset (shared: per-job & composed job-level)
+    HeatmapComposer.tsx         # layer-stack builder: add/remove/reorder/operator/invert, live readout
     TripwirePicker.tsx        # modal: pick line (p1,p2) + inside point on a captured frame (Konva)
     RoiPicker.tsx               # modal: pick an arbitrary polygon (>=3 pts) on a captured frame (Konva)
     HeatmapTile.tsx           # owns ONE job end-to-end: fetch + SSE + render
     HeatmapGrid.tsx            # grid of tiles, empty-state placeholder
     JobStatus.tsx                # progress bar, reused inside HeatmapTile
-  utils/describeHeatmapRequest.ts  # client-side label, mirrors backend's build_label()
-  types/index.ts        # AppState, HeatmapRequest, VideoOutput, HeatmapJobEvent, HeatmapTileData
+  utils/
+    describeHeatmapRequest.ts     # client-side label for the 5 simple types, mirrors backend's build_label()
+    describeComposedLayers.ts      # client-side label for composed jobs, mirrors backend's build_composed_label()
+    primitiveHeatmapFields.ts       # PrimitiveFieldsValue + validity/build helpers (pure, no JSX — react-refresh needs component files to only export components)
+    visualizerFields.ts               # VisualizerFieldsValue + validity/build helpers (same reason)
+  types/index.ts        # AppState, HeatmapRequest, HeatmapLayer, ComposedHeatmapRequest, HeatmapJobRequest, VideoOutput, HeatmapJobEvent, HeatmapTileData
   App.tsx               # state machine + sessionStorage persistence (one blob: videoId/videoUrl/tiles)
 ```
 
@@ -119,6 +126,22 @@ No test runner. `pnpm build`+`pnpm lint` are the only automated checks.
   both static-media routes). Do a real visual click-through before treating
   the UI itself as verified — the manual scenario in
   `docs/acceptance-criteria.md` is the one to run.
+- **`react-refresh/only-export-components` (eslint) forbids a component file
+  from also exporting constants/types/functions.** Bit twice while extracting
+  `PrimitiveHeatmapFields`/`VisualizerFields` out of `HeatmapMenu.tsx` — the
+  fix is a same-named `utils/*.ts` file for the value type + pure
+  validity/build helpers, with the `.tsx` file importing from it and
+  exporting only the component. Don't put `export const`/`export function`
+  next to a component in the same file, even for things that feel
+  component-local.
+- **Composed jobs reuse `HeatmapRequest` as a nested leaf, not a new parallel
+  form.** `HeatmapLayer.heatmap` is exactly the same 5-variant union used by
+  Simple mode — `PrimitiveHeatmapFields` (and its pure counterpart in
+  `utils/primitiveHeatmapFields.ts`) is shared between Simple mode and one
+  "add a layer" step inside `HeatmapComposer`, with `showVisualizer={false}`
+  in the composer since visualizer settings are job-level there, not
+  per-layer (`half_life_time` stays per-layer either way — it's decay
+  behavior of that one primitive, not a rendering setting).
 - **This is a monorepo.** `heatmaps-frontend/`, `heatmaps-backend/`, and
   `lib/` are sibling directories under one git repo (`density-methods/`).
   Don't assume this repo's root is the git root.

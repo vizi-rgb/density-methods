@@ -7,7 +7,8 @@ import { HeatmapGrid } from './components/HeatmapGrid'
 import { cn } from '@sglara/cn'
 import { uploadVideo, createHeatmapJob, submitCalibration, ApiRequestError } from './api/client'
 import { describeHeatmapRequest } from './utils/describeHeatmapRequest'
-import type { AppState, HeatmapRequest, HeatmapTileData, Point } from './types'
+import { describeComposedLayers } from './utils/describeComposedLayers'
+import type { AppState, HeatmapJobRequest, HeatmapTileData, Point } from './types'
 
 const SESSION_STORAGE_KEY = 'heatmaps.session'
 
@@ -86,14 +87,17 @@ export default function App() {
     setAppState('READY')
   }
 
-  const handleAddHeatmap = async (request: HeatmapRequest, customName?: string) => {
+  const handleAddHeatmap = async (request: HeatmapJobRequest, customName?: string) => {
     if (!session) return
     setAddError(null)
     try {
       const { job_id } = await createHeatmapJob(session.videoId, request)
+      const label =
+        customName ??
+        (request.type === 'composed' ? describeComposedLayers(request.layers) : describeHeatmapRequest(request))
       const newSession: Session = {
         ...session,
-        tiles: [...session.tiles, { jobId: job_id, label: customName ?? describeHeatmapRequest(request) }],
+        tiles: [...session.tiles, { jobId: job_id, label }],
       }
       saveSession(newSession)
       setSession(newSession)

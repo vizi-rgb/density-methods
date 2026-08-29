@@ -54,6 +54,43 @@ interface HeatmapVisualizerRequest {
 
 Implemented in `src/api/client.ts`'s `createHeatmapJob`. **Errors**: `404 video_not_found` for an unknown `video_id`, `400 invalid_request` for any per-type validation failure (bad `direction`, `group_size < 2`, `min_speed > max_speed`, `tripwire.p1 == p2`, `roi.polygon` under 3 points) — there's no separate `422` tier, everything body-validation-related is `400`.
 
+### Composed jobs (`type: 'composed'`)
+
+A sixth request shape combines ≥2 of the five primitive types above into one job, evaluated via `HeatmapLogic` server-side (`lib/core/heatmap/logic/logic.py`):
+
+```typescript
+{
+  type: 'composed',
+  layers: HeatmapLayer[],              // see types/index.ts
+  visualizer?: HeatmapVisualizerRequest, // job-level only, see below
+}
+
+interface HeatmapLayer {
+  heatmap: HeatmapRequest;   // any of the 5 primitive bodies above
+  operator?: 'AND' | 'OR' | 'AND_NOT'; // omitted on layers[0], required after
+  invert?: boolean;          // flips this layer's condition before combining
+}
+```
+
+`visualizer` moves to the **job level** for composed requests — the combined
+heatmap is blended onto the frame once, not once per layer. A `visualizer`
+object nested inside an individual layer's `heatmap` is accepted (same
+5-variant type is reused) but ignored server-side; `HeatmapComposer` doesn't
+render a visualizer fieldset per layer at all, only once for the whole job.
+`half_life_time` stays **per layer** (each layer is still its own decaying
+heatmap track before combination).
+
+The job's `output.label`/tile label is a generated readout, e.g.
+`"Show tracks matching (Speed ≥7 km/h) AND (Moving Up) BUT NOT (Inside ROI)"`
+— computed client-side at Add-time by `describeComposedLayers.ts` (mirrors
+the backend's `build_composed_label`/`_layer_condition_phrase` in
+`app/domain/job.py`, same convention as `describeHeatmapRequest.ts` for the
+5 simple types).
+
+Implemented in `HeatmapComposer.tsx` (mode toggle inside `HeatmapMenu.tsx`),
+submitted through the same `createHeatmapJob` call as any other job — see
+`frontend-plan.md` for the component breakdown.
+
 ## `POST /api/videos/{video_id}/calibration`
 
 ```typescript
@@ -100,7 +137,7 @@ Not used by the frontend.
 ## Current implementation status
 
 - [x] Upload has no type selection (moved to per-analysis `HeatmapMenu`).
-- [x] `HeatmapRequest` discriminated union matches the backend's schema exactly, including `group_size`'s exact-match semantics.
+- [x] `HeatmapRequest` discriminated union matches the backend's schema exactly, including `group_size`'s exact-match semantics; `HeatmapJobRequest` additionally covers the `composed` shape (`HeatmapLayer[]` + job-level `visualizer`).
 - [x] Singular `output` (not array) consumed correctly.
 - [x] Optional `visualizer` field sent when the menu's three fields are all filled, omitted otherwise — client-side all-or-nothing validation matches the backend's requirement.
 - [x] Optional `half_life_time` sent when set, omitted otherwise, on all five types.

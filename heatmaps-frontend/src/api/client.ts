@@ -1,7 +1,7 @@
 import type {
   CalibrationRequest,
   HeatmapJobEvent,
-  HeatmapRequest,
+  HeatmapJobRequest,
   VisualizerDefaultsResponse,
 } from '../types';
 
@@ -48,7 +48,7 @@ export async function uploadVideo(file: File): Promise<{ video_id: string; video
 
 export async function createHeatmapJob(
   videoId: string,
-  request: HeatmapRequest,
+  request: HeatmapJobRequest,
 ): Promise<{ job_id: string }> {
   const res = await fetch(`${import.meta.env.VITE_API_URL}/api/videos/${videoId}/heatmaps`, {
     method: 'POST',

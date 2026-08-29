@@ -42,6 +42,22 @@ export type HeatmapRequest =
       visualizer?: HeatmapVisualizerRequest;
     };
 
+export type Operator = 'AND' | 'OR' | 'AND_NOT';
+
+export interface HeatmapLayer {
+  heatmap: HeatmapRequest;
+  operator?: Operator;
+  invert?: boolean;
+}
+
+export interface ComposedHeatmapRequest {
+  type: 'composed';
+  layers: HeatmapLayer[];
+  visualizer?: HeatmapVisualizerRequest;
+}
+
+export type HeatmapJobRequest = HeatmapRequest | ComposedHeatmapRequest;
+
 export interface VideoOutput {
   type: string;
   label: string;

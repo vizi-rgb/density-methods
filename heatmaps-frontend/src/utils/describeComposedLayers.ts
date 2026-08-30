@@ -1,4 +1,4 @@
-import type { HeatmapLayer, HeatmapRequest, Operator } from '../types';
+import type { HeatmapLayer, HeatmapRequest, Operator, View } from '../types';
 
 /** Mirrors the backend's `build_composed_label`/`_layer_condition_phrase`
  * (app/domain/job.py) so the composer can show a live readout, and a tile
@@ -54,7 +54,9 @@ export function describeLayerCondition(request: HeatmapRequest): string {
   return `${REGION_BUCKET_PHRASES[request.bucket]} ROI`;
 }
 
-export function describeComposedLayers(layers: HeatmapLayer[]): string {
+/** `view` is job-level (ComposedHeatmapRequest.view), not per-layer — a
+ * layer's own nested `heatmap.view` is never read, same as the backend. */
+export function describeComposedLayers(layers: HeatmapLayer[], view?: View): string {
   const parts = layers.map((layer, i) => {
     let phrase = describeLayerCondition(layer.heatmap);
     if (layer.invert) phrase = `NOT ${phrase}`;
@@ -62,5 +64,6 @@ export function describeComposedLayers(layers: HeatmapLayer[]): string {
     if (i === 0) return phrase;
     return `${OPERATOR_WORDS[layer.operator ?? 'AND']} ${phrase}`;
   });
-  return `Show tracks matching ${parts.join(' ')}`;
+  const prefix = view === 'world' ? 'World — ' : '';
+  return `${prefix}Show tracks matching ${parts.join(' ')}`;
 }

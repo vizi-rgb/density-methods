@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { HeatmapJobRequest, HeatmapLayer, Operator } from '../types';
+import type { HeatmapJobRequest, HeatmapLayer, Operator, View } from '../types';
 import { PrimitiveHeatmapFields } from './PrimitiveHeatmapFields';
 import {
   EMPTY_PRIMITIVE_FIELDS,
@@ -40,10 +40,11 @@ function normalizeLayers(layers: HeatmapLayer[]): HeatmapLayer[] {
 
 interface HeatmapComposerProps {
   videoUrl: string;
+  view: View;
   onAdd: (request: HeatmapJobRequest, customName?: string) => void;
 }
 
-export function HeatmapComposer({ videoUrl, onAdd }: HeatmapComposerProps) {
+export function HeatmapComposer({ videoUrl, view, onAdd }: HeatmapComposerProps) {
   const [layers, setLayers] = useState<HeatmapLayer[]>([]);
   const [pendingFields, setPendingFields] = useState<PrimitiveFieldsValue>(EMPTY_PRIMITIVE_FIELDS);
   const [pendingOperator, setPendingOperator] = useState<Operator>('AND');
@@ -90,7 +91,12 @@ export function HeatmapComposer({ videoUrl, onAdd }: HeatmapComposerProps) {
     setCustomName('');
     const visualizerRequest = buildVisualizerRequest(visualizer);
     onAdd(
-      { type: 'composed', layers, ...(visualizerRequest ? { visualizer: visualizerRequest } : {}) },
+      {
+        type: 'composed',
+        view,
+        layers,
+        ...(visualizerRequest ? { visualizer: visualizerRequest } : {}),
+      },
       trimmedName,
     );
     setLayers([]);

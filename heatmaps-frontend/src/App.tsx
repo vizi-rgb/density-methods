@@ -16,6 +16,7 @@ interface Session {
   videoId: string
   videoUrl: string
   tiles: HeatmapTileData[]
+  calibrated: boolean
 }
 
 function loadSession(): Session | null {
@@ -59,7 +60,7 @@ export default function App() {
     setError(null)
     try {
       const { video_id, video_url } = await uploadVideo(file)
-      const newSession: Session = { videoId: video_id, videoUrl: video_url, tiles: [] }
+      const newSession: Session = { videoId: video_id, videoUrl: video_url, tiles: [], calibrated: false }
       saveSession(newSession)
       setSession(newSession)
       setAppState('CALIBRATING')
@@ -77,6 +78,9 @@ export default function App() {
         camera_points: cameraPoints,
         real_world_points: realWorldPoints,
       })
+      const newSession: Session = { ...session, calibrated: true }
+      saveSession(newSession)
+      setSession(newSession)
       setAppState('READY')
     } catch (err) {
       setCalibrationError(err instanceof ApiRequestError ? err.message : 'Nie udało się zapisać kalibracji')
@@ -94,7 +98,9 @@ export default function App() {
       const { job_id } = await createHeatmapJob(session.videoId, request)
       const label =
         customName ??
-        (request.type === 'composed' ? describeComposedLayers(request.layers) : describeHeatmapRequest(request))
+        (request.type === 'composed'
+          ? describeComposedLayers(request.layers, request.view)
+          : describeHeatmapRequest(request))
       const newSession: Session = {
         ...session,
         tiles: [...session.tiles, { jobId: job_id, label }],
@@ -141,7 +147,7 @@ export default function App() {
         <>
           <VideoPreview videoUrl={session.videoUrl} />
 
-          <HeatmapMenu videoUrl={session.videoUrl} onAdd={handleAddHeatmap} />
+          <HeatmapMenu videoUrl={session.videoUrl} calibrated={session.calibrated} onAdd={handleAddHeatmap} />
           {addError && <p className="text-red-600">❌ {addError}</p>}
 
           <div className="flex flex-row gap-2">

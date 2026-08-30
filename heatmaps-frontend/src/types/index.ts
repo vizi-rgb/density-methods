@@ -21,16 +21,19 @@ export type RegionBucket = 'inside' | 'outside' | 'inside->outside' | 'outside->
 
 export const REGION_BUCKETS: RegionBucket[] = ['inside', 'outside', 'inside->outside', 'outside->inside'];
 
+export type View = 'camera' | 'world';
+
 export type HeatmapRequest =
-  | { type: 'directional'; direction: Direction; half_life_time?: number; visualizer?: HeatmapVisualizerRequest }
-  | { type: 'speed'; min_speed?: number; max_speed?: number; half_life_time?: number; visualizer?: HeatmapVisualizerRequest }
-  | { type: 'cluster'; group_size: number; half_life_time?: number; visualizer?: HeatmapVisualizerRequest }
+  | { type: 'directional'; direction: Direction; view?: View; half_life_time?: number; visualizer?: HeatmapVisualizerRequest }
+  | { type: 'speed'; min_speed?: number; max_speed?: number; view?: View; half_life_time?: number; visualizer?: HeatmapVisualizerRequest }
+  | { type: 'cluster'; group_size: number; view?: View; half_life_time?: number; visualizer?: HeatmapVisualizerRequest }
   | {
       type: 'tripwire';
       p1: Point;
       p2: Point;
       inside_point: Point;
       bucket: RegionBucket;
+      view?: View;
       half_life_time?: number;
       visualizer?: HeatmapVisualizerRequest;
     }
@@ -38,6 +41,7 @@ export type HeatmapRequest =
       type: 'roi';
       polygon: Point[];
       bucket: RegionBucket;
+      view?: View;
       half_life_time?: number;
       visualizer?: HeatmapVisualizerRequest;
     };
@@ -52,6 +56,7 @@ export interface HeatmapLayer {
 
 export interface ComposedHeatmapRequest {
   type: 'composed';
+  view?: View;
   layers: HeatmapLayer[];
   visualizer?: HeatmapVisualizerRequest;
 }

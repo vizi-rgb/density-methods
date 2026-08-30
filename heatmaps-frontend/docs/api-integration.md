@@ -30,14 +30,15 @@ fetch(`${VITE_API_URL}/api/videos/${videoId}/heatmaps`, {
 
 `request` is one of:
 ```typescript
-{ type: 'directional', direction: 'all'|'static'|'up'|'down'|'left'|'right', half_life_time?: number, visualizer?: HeatmapVisualizerRequest }
-{ type: 'speed', min_speed?: number, max_speed?: number, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }
-{ type: 'cluster', group_size: number, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }  // integer >= 2, EXACT match server-side, not "N or more"
-{ type: 'tripwire', p1: Point, p2: Point, inside_point: Point, bucket: RegionBucket, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }
-{ type: 'roi', polygon: Point[], bucket: RegionBucket, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }  // polygon needs >= 3 points
+{ type: 'directional', direction: 'all'|'static'|'up'|'down'|'left'|'right', view?: View, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }
+{ type: 'speed', min_speed?: number, max_speed?: number, view?: View, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }
+{ type: 'cluster', group_size: number, view?: View, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }  // integer >= 2, EXACT match server-side, not "N or more"
+{ type: 'tripwire', p1: Point, p2: Point, inside_point: Point, bucket: RegionBucket, view?: View, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }
+{ type: 'roi', polygon: Point[], bucket: RegionBucket, view?: View, half_life_time?: number, visualizer?: HeatmapVisualizerRequest }  // polygon needs >= 3 points
 ```
 ```typescript
 type RegionBucket = 'inside' | 'outside' | 'inside->outside' | 'outside->inside';
+type View = 'camera' | 'world'; // default 'camera' server-side; frontend always sends it explicitly
 
 interface HeatmapVisualizerRequest {
   fixed_max: number; // >= 0
@@ -45,6 +46,14 @@ interface HeatmapVisualizerRequest {
   sigma: number;       // >= 0
 }
 ```
+
+### `view`: camera vs. world
+
+`view` is a **job-level, mutually-exclusive** choice, selected once via a top-level button-pair in `HeatmapMenu` (above both the Simple/Composed toggle and the type radio group) — never mixed within one job. `'world'` renders a real-world/meter-space heatmap from directly overhead using the video's calibration, instead of a pixel-space overlay on the source frame; the output video's resolution/aspect ratio differs from the source (see `heatmaps-backend/docs/api-contract.md`).
+
+**No other frontend change is needed for `roi`/`tripwire` geometry** — `p1`/`p2`/`inside_point`/`polygon` are always source-video pixel coordinates for both views (converted to world space server-side), so `RoiPicker`/`TripwirePicker` are reused completely unchanged.
+
+`view` isn't part of `PrimitiveFieldsValue`/`buildPrimitiveRequest` — it's stamped onto the built request at submit time in `HeatmapMenu.tsx` (simple mode) and `HeatmapComposer.tsx` (composed mode), both reading from the same shared `view` state in `HeatmapMenu`. A `view` nested inside a composed layer's `heatmap` is accepted by the backend but ignored (same precedent as the nested `visualizer` field) — the frontend never sets it there.
 
 `half_life_time` (seconds, integer > 0) is optional on all five types — applies exponential decay to the heatmap every frame so old activity fades out instead of accumulating for the whole video. Omit for no decay.
 
@@ -61,6 +70,7 @@ A sixth request shape combines ≥2 of the five primitive types above into one j
 ```typescript
 {
   type: 'composed',
+  view?: View,                          // job-level, same as the 5 primitive types
   layers: HeatmapLayer[],              // see types/index.ts
   visualizer?: HeatmapVisualizerRequest, // job-level only, see below
 }
@@ -121,6 +131,7 @@ Event/response payloads:
 {"status": "queued"}
 {"status": "processing", "progress": 45}
 {"status": "completed", "progress": 100, "output": {"type": "directional", "label": "Directional — right", "video_url": "http://.../media/jobs/{job_id}/output.mp4"}}
+// label is prefixed "World — " when the job's `view` was "world"
 {"status": "failed", "error": "..."}
 ```
 
@@ -142,6 +153,7 @@ Not used by the frontend.
 - [x] Optional `visualizer` field sent when the menu's three fields are all filled, omitted otherwise — client-side all-or-nothing validation matches the backend's requirement.
 - [x] Optional `half_life_time` sent when set, omitted otherwise, on all five types.
 - [x] `tripwire`/`roi` geometry (`TripwirePicker`/`RoiPicker`, both Konva modals over a captured video frame) collected in native pixel resolution and submitted alongside a shared `RegionBucket` selector.
+- [x] `view` (`camera`/`world`) top-level selector in `HeatmapMenu`, shared by Simple and Composed submission, stamped onto the request at submit time; labels prefixed "World — " to match the backend.
 - [x] Reload recovery — verified via `sessionStorage` persistence design; each tile re-syncs independently.
 - [x] CORS verified live against a real running backend from the actual `pnpm dev` origin (upload, job creation, video preview, job output).
 - [ ] Full visual browser click-through (upload → add all 5 types, including placing tripwire/roi points → tiles render and play) — **not done**. The Chrome extension wasn't connected in the environment this was built in; verification instead covered `tsc`/`eslint`/`pnpm build` (all clean) plus the exact HTTP contract exercised live with matching CORS headers, and the backend side against real YOLO inference. Do a real click-through before considering this fully done.

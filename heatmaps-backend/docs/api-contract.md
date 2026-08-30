@@ -72,6 +72,19 @@ All five types also accept an optional `visualizer` object — rendering tuning 
 
 All three fields are required together — there's no way to override just one and default the others. Omit `visualizer` entirely to use the server's configured defaults (`heatmap_fixed_max`/`heatmap_alpha`/`heatmap_sigma` in `app/config.py`, currently `3.0`/`0.5`/`25.0`).
 
+### View: camera vs. world (`view`)
+
+All five types (and `composed`, below) also accept an optional `view`: `"camera"` (default) or `"world"`. This is a **mutually-exclusive, job-level** choice — a job is entirely camera-view or entirely world-view, never both:
+
+```json
+{ "type": "roi", "polygon": [[500, 400], [1300, 400], [1300, 750], [500, 750]], "bucket": "inside", "view": "world" }
+```
+
+- `"camera"` (default): today's behavior — a pixel-space heatmap blended onto the source video frame, output video matches the source's resolution.
+- `"world"`: a real-world/meter-space heatmap rendered from directly overhead on a black background, using the video's calibration (`POST /api/videos/{video_id}/calibration`) — or the same hardcoded fallback matrix `speed` silently uses today, if the video was never calibrated. **`p1`/`p2`/`inside_point`/`polygon` keep the exact same source-video pixel coordinates as camera view** — they're converted to world space server-side, so no client-side changes are needed to reuse the same point-picking UI for both views. Output video resolution differs from the source video (a small real-world grid upscaled by a fixed factor) and its aspect ratio reflects the calibrated room's real-world proportions, not the camera's.
+
+A `view` nested inside an individual layer's `heatmap` in a `composed` request (see below) is accepted (for schema reuse with the standalone types) but **ignored** — only the job-level `view` on the composed request itself has any effect, same as the nested `visualizer` field.
+
 ### Composed jobs (`type: "composed"`)
 
 A sixth request shape combines two or more of the five primitive types above into one job via `HeatmapLogic` (`lib/core/heatmap/logic/logic.py`), applied per-frame before rendering:
@@ -137,7 +150,7 @@ Point-in-time snapshot of one job — used by the frontend to recover state afte
 }
 ```
 
-`output` is a **single object** — one job always produces exactly one result. `label` is a ready-to-display string built from the request (`"Directional — right"`, `"Speed ≥3.5 km/h"`, `"Speed 3.5–10 km/h"`, `"Speed (any)"`, `"Cluster size 3"`, `"Tripwire — inside"`, `"ROI — outside->inside"`). For a composed job, `output.type` is `"composed"` and `label` is the generated readout described above (e.g. `"Show tracks matching (Speed ≥7 km/h) AND (Moving Up) BUT NOT (Inside ROI)"`).
+`output` is a **single object** — one job always produces exactly one result. `label` is a ready-to-display string built from the request (`"Directional — right"`, `"Speed ≥3.5 km/h"`, `"Speed 3.5–10 km/h"`, `"Speed (any)"`, `"Cluster size 3"`, `"Tripwire — inside"`, `"ROI — outside->inside"`), prefixed with `"World — "` when `view: "world"` was requested. For a composed job, `output.type` is `"composed"` and `label` is the generated readout described above (e.g. `"Show tracks matching (Speed ≥7 km/h) AND (Moving Up) BUT NOT (Inside ROI)"`), with the same `"World — "` prefix when the job's `view` was `"world"`.
 
 **Error responses:** `404` (`job_not_found`) — unknown or expired job.
 

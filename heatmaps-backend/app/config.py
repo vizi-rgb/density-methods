@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     heatmap_alpha: float = 0.5
     heatmap_sigma: float = 25.0
 
+    birdseye_display_scale: int = 1
+
     progress_update_every_n_frames: int = 10
 
     @property

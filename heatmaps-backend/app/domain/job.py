@@ -33,24 +33,29 @@ def _speed_phrase(heatmap_request: dict[str, Any]) -> str:
     return "Speed (any)"
 
 
+def _view_prefix(view: str | None) -> str:
+    return "World — " if view == "world" else ""
+
+
 def build_label(heatmap_request: dict[str, Any]) -> str:
     """Human label for a heatmap request, e.g. for `VideoOutput.label`."""
     heatmap_type = heatmap_request["type"]
+    prefix = _view_prefix(heatmap_request.get("view"))
 
     if heatmap_type == "directional":
-        return f"Directional — {heatmap_request['direction']}"
+        return f"{prefix}Directional — {heatmap_request['direction']}"
 
     if heatmap_type == "speed":
-        return _speed_phrase(heatmap_request)
+        return f"{prefix}{_speed_phrase(heatmap_request)}"
 
     if heatmap_type == "cluster":
-        return f"Cluster size {heatmap_request['group_size']}"
+        return f"{prefix}Cluster size {heatmap_request['group_size']}"
 
     if heatmap_type == "tripwire":
-        return f"Tripwire — {heatmap_request['bucket']}"
+        return f"{prefix}Tripwire — {heatmap_request['bucket']}"
 
     if heatmap_type == "roi":
-        return f"ROI — {heatmap_request['bucket']}"
+        return f"{prefix}ROI — {heatmap_request['bucket']}"
 
     raise ValueError(f"Unknown heatmap type: {heatmap_type!r}")
 
@@ -101,9 +106,10 @@ def _layer_condition_phrase(heatmap_request: dict[str, Any]) -> str:
     raise ValueError(f"Unknown heatmap type: {heatmap_type!r}")
 
 
-def build_composed_label(layers: list[dict[str, Any]]) -> str:
+def build_composed_label(layers: list[dict[str, Any]], view: str | None = None) -> str:
     """Natural-language readout for a composed (layered) heatmap job, e.g.
     "Show tracks matching (Speed ≥7 km/h) AND (Moving Up) BUT NOT (Inside ROI)".
+    `view` is job-level (see ComposedHeatmapRequest.view), not per-layer.
     """
     parts: list[str] = []
     for i, layer in enumerate(layers):
@@ -115,7 +121,7 @@ def build_composed_label(layers: list[dict[str, Any]]) -> str:
             parts.append(phrase)
         else:
             parts.append(f"{_OPERATOR_WORDS[layer['operator']]} {phrase}")
-    return "Show tracks matching " + " ".join(parts)
+    return _view_prefix(view) + "Show tracks matching " + " ".join(parts)
 
 
 _RQ_QUEUED_STATUSES = {

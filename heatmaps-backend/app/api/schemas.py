@@ -42,6 +42,8 @@ class DefaultsResponse(BaseModel):
 
 Direction = Literal["all", "static", "up", "down", "left", "right"]
 
+View = Literal["camera", "world"]
+
 
 class HeatmapVisualizerRequest(BaseModel):
     fixed_max: float = Field(ge=0)
@@ -52,6 +54,7 @@ class HeatmapVisualizerRequest(BaseModel):
 class DirectionalHeatmapRequest(BaseModel):
     type: Literal["directional"]
     direction: Direction
+    view: View = "camera"
     half_life_time: int | None = Field(default=None, gt=0)
     visualizer: HeatmapVisualizerRequest | None = None
 
@@ -60,6 +63,7 @@ class SpeedHeatmapRequest(BaseModel):
     type: Literal["speed"]
     min_speed: float | None = Field(default=None, ge=0)
     max_speed: float | None = Field(default=None, ge=0)
+    view: View = "camera"
     half_life_time: int | None = Field(default=None, gt=0)
     visualizer: HeatmapVisualizerRequest | None = None
 
@@ -79,6 +83,7 @@ class ClusterHeatmapRequest(BaseModel):
     # DBSCAN's min_samples=2 (lib/core/heatmap/clusters/cluster_heatmap.py)
     # means a "cluster" of 1 person doesn't exist in the underlying data.
     group_size: int = Field(ge=2)
+    view: View = "camera"
     half_life_time: int | None = Field(default=None, gt=0)
     visualizer: HeatmapVisualizerRequest | None = None
 
@@ -92,6 +97,7 @@ class TripwireHeatmapRequest(BaseModel):
     p2: Point
     inside_point: Point
     bucket: RegionBucket
+    view: View = "camera"
     half_life_time: int | None = Field(default=None, gt=0)
     visualizer: HeatmapVisualizerRequest | None = None
 
@@ -106,6 +112,7 @@ class RoiHeatmapRequest(BaseModel):
     type: Literal["roi"]
     polygon: list[Point] = Field(min_length=3)
     bucket: RegionBucket
+    view: View = "camera"
     half_life_time: int | None = Field(default=None, gt=0)
     visualizer: HeatmapVisualizerRequest | None = None
 
@@ -131,6 +138,7 @@ class HeatmapLayer(BaseModel):
 
 class ComposedHeatmapRequest(BaseModel):
     type: Literal["composed"] = "composed"
+    view: View = "camera"
     layers: list[HeatmapLayer] = Field(min_length=1)
     visualizer: HeatmapVisualizerRequest | None = None
 

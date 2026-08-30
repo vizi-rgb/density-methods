@@ -59,10 +59,13 @@ def run_job(
     encoder: Mp4Encoder | None = None
     try:
         metadata = pipeline.read_metadata(video_path)
+        output_width, output_height = pipeline.resolve_output_dimensions(
+            heatmap_request.get("view", "camera"), metadata, transformation_matrix, settings
+        )
         encoder = Mp4Encoder(
             output_path=job_output_path(settings, job_id),
-            width=metadata.width,
-            height=metadata.height,
+            width=output_width,
+            height=output_height,
             fps=metadata.fps,
         )
 
@@ -84,7 +87,9 @@ def run_job(
         encoder.close()
 
         if heatmap_request["type"] == "composed":
-            label = build_composed_label(heatmap_request["layers"])
+            label = build_composed_label(
+                heatmap_request["layers"], heatmap_request.get("view")
+            )
         else:
             label = build_label(heatmap_request)
 

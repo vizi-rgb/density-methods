@@ -36,7 +36,7 @@ class ClusterHeatmap:
         self.intermediate_heatmap = np.zeros(
             (self.height, self.width), dtype=np.float32
         )
-        self.clustering = DBSCAN(eps=80, min_samples=2)
+        self.clustering = DBSCAN(eps=builder.cluster_eps, min_samples=2)
         if self.fps and builder.half_life_time:
             self.decay_factor = 0.5 ** (1 / (builder.half_life_time * self.fps))
         else:

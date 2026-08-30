@@ -16,6 +16,7 @@ class ClusterHeatmapBuilder:
     half_life_time: int | None = None
     momentum_buffer_size: int = 1
     max_lost_frames: int = 10
+    cluster_eps: float = 80.0
 
     def with_height(self, height: int) -> "ClusterHeatmapBuilder":
         self.height = height
@@ -47,6 +48,10 @@ class ClusterHeatmapBuilder:
         self, half_life_time_in_seconds: int
     ) -> "ClusterHeatmapBuilder":
         self.half_life_time = half_life_time_in_seconds
+        return self
+
+    def with_cluster_eps(self, cluster_eps: float) -> "ClusterHeatmapBuilder":
+        self.cluster_eps = cluster_eps
         return self
 
     def build(self) -> "ClusterHeatmap":
